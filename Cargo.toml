@@ -1,0 +1,21 @@
+[package]
+edition = "2021"
+name = "noodle_grid"
+version = "0.1.0"
+
+[dependencies]
+anyhow = "1.0.70"
+bytemuck = "1.14.3"
+capnp = "0.19.2"
+clap = {version = "4", features = ["derive", "cargo"]}
+colabrodo_common = {git = 'https://github.com/InsightCenterNoodles/colabrodo', rev = "e5ec9d6731907bccb836e3c5adf9cd63395ba9f2"}
+colabrodo_server = {git = 'https://github.com/InsightCenterNoodles/colabrodo', rev = "e5ec9d6731907bccb836e3c5adf9cd63395ba9f2"}
+env_logger = "0.11.2"
+gltf = "1.1"
+local-ip-address = "0.6.1"
+log = "0.4"
+mdns-sd = "0.10.4"
+nalgebra = "0.32.4"
+nalgebra-glm = "0.18.0"
+num-traits = "0.2.15"
+url = "2.4.0"
