@@ -1,5 +1,6 @@
 mod arguments;
 mod dots;
+mod geometry;
 mod power_system_capnp;
 mod state;
 
@@ -23,9 +24,11 @@ async fn main() {
 
     let app_state = GridState::new(state.clone(), load_data());
 
+    GridState::post_setup(&state, &app_state);
+
     {
         let mut lock = app_state.lock().unwrap();
-        lock.recompute_all();
+        recompute_all(&mut lock, &mut state.lock().unwrap());
     }
 
     let mdns = mdns_publish(opts.host.port().unwrap());

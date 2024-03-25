@@ -12,6 +12,12 @@ use std::{io::BufReader, path::Path};
 // }
 
 #[derive(Debug, Clone, Copy)]
+pub struct Position {
+    pub sx: f64,
+    pub sy: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct EndedPosition {
     pub sx: f64,
     pub sy: f64,
@@ -19,19 +25,19 @@ pub struct EndedPosition {
     pub ey: f64,
 }
 
-pub struct Phased {
-    pub a: f32,
-    pub b: f32,
-    pub c: f32,
+pub struct Phased<T = f32> {
+    pub a: T,
+    pub b: T,
+    pub c: T,
 }
 
-pub struct EndPhased {
-    pub sa: f32,
-    pub sb: f32,
-    pub sc: f32,
-    pub ea: f32,
-    pub eb: f32,
-    pub ec: f32,
+pub struct EndPhased<T = f32> {
+    pub sa: T,
+    pub sb: T,
+    pub sc: T,
+    pub ea: T,
+    pub eb: T,
+    pub ec: T,
 }
 
 pub struct LineState {
@@ -44,17 +50,11 @@ pub struct LineState {
 pub struct TransformerState {
     pub voltage: EndPhased,
 
-    pub volt_a_to: f32,
-    pub volt_b_to: f32,
-    pub volt_c_to: f32,
+    pub tap: Phased<i32>,
 
-    pub tap_a: i32,
-    pub tap_b: i32,
-    pub tap_c: i32,
+    pub tap_changes: Phased<i32>,
 
-    pub tap_changes_a: i32,
-    pub tap_changes_b: i32,
-    pub tap_changes_c: i32,
+    pub loc: Position,
 }
 
 pub struct GeneratorState {
@@ -62,6 +62,7 @@ pub struct GeneratorState {
     pub angle: Phased,
     pub real: f32,
     pub react: f32,
+    pub loc: Position,
 }
 
 pub struct PowerSystem {
@@ -146,12 +147,105 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
         lines
     };
 
-    Ok(PowerSystem {
-        lines,
-        tfs: vec![],
-        pvs: vec![],
-    })
+    let tfs = {
+        let data_src = ds.get_transformers()?;
 
-    // tfs: Vec<Vec<TransformerState>>,
-    // pvs: Vec<Vec<GeneratorState>>,
+        let mut data = Vec::<Vec<TransformerState>>::with_capacity(data_src.len() as usize);
+
+        let datas: Vec<_> = data_src
+            .iter()
+            .map(|f| {
+                (
+                    Position {
+                        sx: f.get_position_x(),
+                        sy: f.get_position_y(),
+                    },
+                    f.get_data().unwrap(),
+                )
+            })
+            .collect();
+
+        let mut iters: Vec<_> = datas.iter().map(|f| (f.0, f.1.iter())).collect();
+
+        let time_step_count = data_src.get(0).get_data()?.len();
+
+        for _ in 0..time_step_count {
+            let mut per_time_step = vec![];
+            for iter in iters.iter_mut() {
+                let a = iter.1.next().unwrap();
+                per_time_step.push(TransformerState {
+                    voltage: EndPhased {
+                        sa: a.get_volt_a_from(),
+                        sb: a.get_volt_b_from(),
+                        sc: a.get_volt_c_from(),
+                        ea: a.get_volt_a_to(),
+                        eb: a.get_volt_b_to(),
+                        ec: a.get_volt_c_to(),
+                    },
+                    tap: Phased {
+                        a: a.get_tap_a(),
+                        b: a.get_tap_b(),
+                        c: a.get_tap_c(),
+                    },
+                    tap_changes: Phased {
+                        a: a.get_tap_changes_a(),
+                        b: a.get_tap_changes_b(),
+                        c: a.get_tap_changes_c(),
+                    },
+                    loc: iter.0,
+                });
+            }
+            data.push(per_time_step)
+        }
+        data
+    };
+
+    let pvs = {
+        let data_src = ds.get_generators()?;
+
+        let mut data = Vec::<Vec<GeneratorState>>::with_capacity(data_src.len() as usize);
+
+        let datas: Vec<_> = data_src
+            .iter()
+            .map(|f| {
+                (
+                    Position {
+                        sx: f.get_position_x(),
+                        sy: f.get_position_y(),
+                    },
+                    f.get_data().unwrap(),
+                )
+            })
+            .collect();
+
+        let mut iters: Vec<_> = datas.iter().map(|f| (f.0, f.1.iter())).collect();
+
+        let time_step_count = data_src.get(0).get_data()?.len();
+
+        for _ in 0..time_step_count {
+            let mut per_time_step = vec![];
+            for iter in iters.iter_mut() {
+                let a = iter.1.next().unwrap();
+                per_time_step.push(GeneratorState {
+                    voltage: Phased {
+                        a: a.get_volt_a(),
+                        b: a.get_volt_b(),
+                        c: a.get_volt_c(),
+                    },
+                    angle: Phased {
+                        a: a.get_angle_a(),
+                        b: a.get_angle_b(),
+                        c: a.get_angle_c(),
+                    },
+                    real: a.get_real(),
+                    react: a.get_react(),
+                    loc: iter.0,
+                });
+            }
+            data.push(per_time_step)
+        }
+        data
+    };
+
+    Ok(PowerSystem { lines, tfs, pvs })
 }

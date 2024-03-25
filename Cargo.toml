@@ -8,8 +8,8 @@ anyhow = "1.0.70"
 bytemuck = "1.14.3"
 capnp = "0.19.2"
 clap = {version = "4", features = ["derive", "cargo"]}
-colabrodo_common = {git = 'https://github.com/InsightCenterNoodles/colabrodo', rev = "e5ec9d6731907bccb836e3c5adf9cd63395ba9f2"}
-colabrodo_server = {git = 'https://github.com/InsightCenterNoodles/colabrodo', rev = "e5ec9d6731907bccb836e3c5adf9cd63395ba9f2"}
+colabrodo_common = {git = 'https://github.com/InsightCenterNoodles/colabrodo', rev = "b98993c021068cb21cc0717fddb3e54d0b949b51"}
+colabrodo_server = {git = 'https://github.com/InsightCenterNoodles/colabrodo', rev = "b98993c021068cb21cc0717fddb3e54d0b949b51"}
 env_logger = "0.11.2"
 gltf = "1.1"
 local-ip-address = "0.6.1"
