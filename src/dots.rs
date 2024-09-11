@@ -66,6 +66,9 @@ pub struct GeneratorState {
 }
 
 pub struct PowerSystem {
+    // These are all states by time;
+    // lines[time][line]
+    pub title: String,
     pub lines: Vec<Vec<LineState>>,
     pub tfs: Vec<Vec<TransformerState>>,
     pub pvs: Vec<Vec<GeneratorState>>,
@@ -87,10 +90,14 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
     let lines = {
         let mut lines = Vec::<Vec<LineState>>::with_capacity(ds.get_lines()?.len() as usize);
 
-        // we are doing a transpose here
+        // we are doing a transpose here.
+        // The data is coming is as Lines -> Times
+        // We want Times -> Lines as thats how we are looking at things
 
         let line_src = ds.get_lines()?;
 
+        // This is a list of line positions, along with an iterator
+        // of the data for that line
         let datas: Vec<_> = line_src
             .iter()
             .map(|f| {
@@ -102,18 +109,28 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
                         ey: f.get_position_end_y(),
                     },
                     f.get_data().unwrap(),
+                    f.get_id().unwrap().to_str().unwrap(),
                 )
             })
             .collect();
 
-        let mut iters: Vec<_> = datas.iter().map(|f| (f.0, f.1.iter())).collect();
+        let mut iters: Vec<_> = datas.iter().map(|f| (f.0, f.1.iter(), f.2)).collect();
 
         let time_step_count = line_src.get(0).get_data()?.len();
 
+        println!("Time steps {time_step_count}");
+
         for _ in 0..time_step_count {
             let mut per_time_step = vec![];
+
+            // for each line...
             for iter in iters.iter_mut() {
-                let a = iter.1.next().unwrap();
+                // get the next line state for this line
+                let Some(a) = iter.1.next() else {
+                    //println!("Line is empty {:?} at {time_step_i}", iter.0);
+                    continue;
+                };
+
                 per_time_step.push(LineState {
                     voltage: EndPhased {
                         sa: a.get_volt_a_from(),
@@ -247,5 +264,50 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
         data
     };
 
-    Ok(PowerSystem { lines, tfs, pvs })
+    let title = figure_name(path);
+
+    Ok(PowerSystem {
+        title,
+        lines,
+        tfs,
+        pvs,
+    })
+}
+
+fn figure_name(path: &Path) -> String {
+    let res = extract_name(path);
+
+    if let Some(name) = res {
+        return name;
+    }
+
+    path.file_stem()
+        .and_then(|f| f.to_str())
+        .unwrap_or("Unknown")
+        .to_string()
+}
+
+fn extract_name(path: &Path) -> Option<String> {
+    let file = std::fs::File::open(path).ok()?;
+    let buff_reader = BufReader::new(&file);
+    let reader = capnp::serialize::read_message(
+        buff_reader,
+        capnp::message::ReaderOptions {
+            traversal_limit_in_words: None,
+            ..Default::default()
+        },
+    )
+    .ok()?;
+
+    let ds = reader
+        .get_root::<crate::power_system_capnp::power_system_dataset::Reader>()
+        .ok()?;
+
+    let string = ds.get_name().ok()?.to_string().ok()?;
+
+    if string.is_empty() {
+        return None;
+    }
+
+    Some(string)
 }

@@ -516,7 +516,7 @@ pub fn make_sphere(server_state: &mut ServerState, color: glm::Vec3) -> Geometry
         mutable: ServerMaterialStateUpdatable {
             pbr_info: Some(ServerPBRInfo {
                 base_color: [color.x, color.y, color.z, 1.0],
-                metallic: Some(0.0),
+                metallic: Some(1.0),
                 roughness: Some(0.25),
                 ..Default::default()
             }),
@@ -537,84 +537,111 @@ pub fn make_sphere(server_state: &mut ServerState, color: glm::Vec3) -> Geometry
         .unwrap()
 }
 
-pub fn make_cube(server_state: &mut ServerState, color: glm::Vec3) -> GeometryReference {
-    let verts = vec![
-        VertexMinimal {
-            position: [-0.5, -0.5, 0.5],
-            normal: [-0.5774, -0.5774, 0.5774],
-        },
-        VertexMinimal {
-            position: [0.5, -0.5, 0.5],
-            normal: [0.5774, -0.5774, 0.5774],
-        },
-        VertexMinimal {
-            position: [0.5, 0.5, 0.5],
-            normal: [0.5774, 0.5774, 0.5774],
-        },
-        VertexMinimal {
-            position: [-0.5, 0.5, 0.5],
-            normal: [-0.5774, 0.5774, 0.5774],
-        },
-        VertexMinimal {
-            position: [-0.5, -0.5, -0.5],
-            normal: [-0.5774, -0.5774, -0.5774],
-        },
-        VertexMinimal {
-            position: [0.5, -0.5, -0.5],
-            normal: [0.5774, -0.5774, -0.5774],
-        },
-        VertexMinimal {
-            position: [0.5, 0.5, -0.5],
-            normal: [0.5774, 0.5774, -0.5774],
-        },
-        VertexMinimal {
-            position: [-0.5, 0.5, -0.5],
-            normal: [-0.5774, 0.5774, -0.5774],
-        },
-    ];
+const CUBE_POS: &[[f32; 3]; 24] = &[
+    [-0.5, 0.5, -0.5],
+    [0.5, 0.5, 0.5],
+    [0.5, 0.5, -0.5],
+    [0.5, 0.5, 0.5],
+    [-0.5, -0.5, 0.5],
+    [0.5, -0.5, 0.5],
+    [-0.5, 0.5, 0.5],
+    [-0.5, -0.5, -0.5],
+    [-0.5, -0.5, 0.5],
+    [0.5, -0.5, -0.5],
+    [-0.5, -0.5, 0.5],
+    [-0.5, -0.5, -0.5],
+    [0.5, 0.5, -0.5],
+    [0.5, -0.5, 0.5],
+    [0.5, -0.5, -0.5],
+    [-0.5, 0.5, -0.5],
+    [0.5, -0.5, -0.5],
+    [-0.5, -0.5, -0.5],
+    [-0.5, 0.5, 0.5],
+    [-0.5, 0.5, 0.5],
+    [-0.5, 0.5, -0.5],
+    [0.5, -0.5, 0.5],
+    [0.5, 0.5, 0.5],
+    [0.5, 0.5, -0.5],
+];
 
-    let index_list = vec![
-        // front
-        [0, 1, 2],
-        [2, 3, 0],
-        // right
-        [1, 5, 6],
-        [6, 2, 1],
-        // back
-        [7, 6, 5],
-        [5, 4, 7],
-        // left
-        [4, 0, 3],
-        [3, 7, 4],
-        // bottom
-        [4, 5, 1],
-        [1, 0, 4],
-        // top
-        [3, 2, 6],
-        [6, 7, 3],
-    ];
-    let index_list = IndexType::Triangles(index_list.as_slice());
+const CUBE_NOR: &[[f32; 3]; 24] = &[
+    [-0.0, 1.0, -0.0],
+    [-0.0, 1.0, -0.0],
+    [-0.0, 1.0, -0.0],
+    [-0.0, -0.0, 1.0],
+    [-0.0, -0.0, 1.0],
+    [-0.0, -0.0, 1.0],
+    [-1.0, -0.0, -0.0],
+    [-1.0, -0.0, -0.0],
+    [-1.0, -0.0, -0.0],
+    [-0.0, -1.0, -0.0],
+    [-0.0, -1.0, -0.0],
+    [-0.0, -1.0, -0.0],
+    [1.0, -0.0, -0.0],
+    [1.0, -0.0, -0.0],
+    [1.0, -0.0, -0.0],
+    [-0.0, -0.0, -1.0],
+    [-0.0, -0.0, -1.0],
+    [-0.0, -0.0, -1.0],
+    [-0.0, 1.0, -0.0],
+    [-0.0, -0.0, 1.0],
+    [-1.0, -0.0, -0.0],
+    [-0.0, -1.0, -0.0],
+    [1.0, -0.0, -0.0],
+    [-0.0, -0.0, -1.0],
+];
+
+const CUBE_INDEX: &[[u32; 3]; 12] = &[
+    [0, 1, 2],
+    [3, 4, 5],
+    [6, 7, 8],
+    [9, 10, 11],
+    [12, 13, 14],
+    [15, 16, 17],
+    [0, 18, 1],
+    [3, 19, 4],
+    [6, 20, 7],
+    [9, 21, 10],
+    [12, 22, 13],
+    [15, 23, 16],
+];
+
+fn transform_p(p: [f32; 3], tf: &glm::Mat4) -> [f32; 3] {
+    let lp: glm::Vec3 = p.into();
+    let lp = glm::vec4(lp.x, lp.y, lp.z, 1.0);
+    let lp = tf * lp;
+    (lp.xyz() / lp.w).into()
+}
+
+fn transform_n(p: [f32; 3], tf: &glm::Mat3) -> [f32; 3] {
+    let lp: glm::Vec3 = p.into();
+    let lp = (tf * lp).normalize();
+    lp.into()
+}
+
+pub fn make_cube(
+    server_state: &mut ServerState,
+    tf: glm::Mat4,
+    material: MaterialReference,
+) -> GeometryReference {
+    let normal_tf = glm::inverse_transpose(glm::mat4_to_mat3(&tf));
+
+    let verts: Vec<_> = CUBE_POS
+        .iter()
+        .zip(CUBE_NOR)
+        .map(|f| VertexMinimal {
+            position: transform_p(*f.0, &tf),
+            normal: transform_n(*f.1, &normal_tf),
+        })
+        .collect();
+
+    let index_list = IndexType::Triangles(CUBE_INDEX);
 
     let test_source = VertexSource {
         name: Some("Cube".to_string()),
         vertex: verts.as_slice(),
         index: index_list,
     };
-
-    // Create a material to go along with this cube
-    let material = server_state.materials.new_component(ServerMaterialState {
-        name: None,
-        mutable: ServerMaterialStateUpdatable {
-            pbr_info: Some(ServerPBRInfo {
-                base_color: [color.x, color.y, color.z, 1.0],
-                metallic: Some(0.0),
-                roughness: Some(0.25),
-                ..Default::default()
-            }),
-            double_sided: Some(true),
-            ..Default::default()
-        },
-    });
 
     let pack = test_source.pack_bytes().unwrap();
 
