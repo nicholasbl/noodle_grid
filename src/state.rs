@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    geometry::{make_cube, make_sphere},
+    geometry::{make_cube, make_cyl, make_sphere},
     texture::make_hsv_texture,
     GeneratorState, LineState, PowerSystem, TransformerState,
 };
@@ -14,8 +14,7 @@ use colabrodo_server::{server::*, server_messages::*};
 
 use nalgebra_glm as glm;
 
-// # ERROR, animation on server and better updates on here (no rebuild all insts)
-
+/// Linear interpolation of a value between one range to an output range
 #[inline]
 fn lerp<T>(x: T, x0: T, x1: T, y0: T, y1: T) -> T
 where
@@ -24,6 +23,7 @@ where
     y0 + (x - x0) * ((y1 - y0) / (x1 - x0))
 }
 
+/// Does the same as [`lerp`] but also clamps the output to the output range
 #[inline]
 fn clamped_lerp<T>(x: T, x0: T, x1: T, y0: T, y1: T) -> T
 where
@@ -38,6 +38,7 @@ where
     num_traits::clamp(lerp(x, x0, x1, y0, y1), y0, y1)
 }
 
+/// Describes how to translate voltage and power to lengths and heights
 #[derive(Debug)]
 struct Domain {
     x_bounds: glm::DVec2,
@@ -128,6 +129,7 @@ impl Domain {
     }
 }
 
+/// To avoid overlap of phases (such as on transformers), we use a minute offset
 const PHASE_OFFSET: glm::Vec3 = glm::Vec3::new(0.001, 0.0, -0.001);
 
 pub struct GridState {
@@ -142,19 +144,16 @@ pub struct GridState {
     lower_hazard: EntityReference,
     upper_hazard: EntityReference,
 
-    line_a_entity: EntityReference,
-    line_b_entity: EntityReference,
-    line_c_entity: EntityReference,
+    line_entity: EntityReference,
+    transformer_entity: EntityReference,
     gen_entity: EntityReference,
 
-    line_a_geometry: GeometryReference,
-    line_b_geometry: GeometryReference,
-    line_c_geometry: GeometryReference,
+    line_geometry: GeometryReference,
+    transformer_geometry: GeometryReference,
     gen_geometry: GeometryReference,
 
-    line_a_buffer: Vec<u8>,
-    line_b_buffer: Vec<u8>,
-    line_c_buffer: Vec<u8>,
+    line_buffer: Vec<u8>,
+    transformer_buffer: Vec<u8>,
     gen_buffer: Vec<u8>,
 
     active_timer: Option<tokio::sync::oneshot::Sender<bool>>,
@@ -167,8 +166,10 @@ impl GridState {
     pub fn new(state: ServerStatePtr, system: PowerSystem) -> GridStatePtr {
         let mut state_lock = state.lock().unwrap();
 
+        // load color texture for instances
         let texture = make_hsv_texture(&mut state_lock);
 
+        // build a material for lines
         let line_mat = state_lock.materials.new_component(ServerMaterialState {
             name: Some("Line Material".into()),
             mutable: ServerMaterialStateUpdatable {
@@ -187,49 +188,24 @@ impl GridState {
             },
         });
 
-        // Create a cube
-        let line_a_geometry = make_cube(&mut state_lock, glm::identity(), line_mat.clone());
-        let line_b_geometry = make_cube(&mut state_lock, glm::identity(), line_mat.clone());
-        let line_c_geometry = make_cube(&mut state_lock, glm::identity(), line_mat);
+        // Create geometry for the lines
+        let line_geometry = make_cube(&mut state_lock, glm::identity(), line_mat.clone());
 
+        // Create geometry for the tfs
+        let transformer_geometry = make_cyl(&mut state_lock, glm::identity(), line_mat.clone());
+
+        // Create geometry for the generators
         let gen_geometry = make_sphere(&mut state_lock, glm::Vec3::new(1.0, 1.0, 0.0));
 
-        let line_a_entity = state_lock.entities.new_component(ServerEntityState {
-            name: Some("Lines A".to_string()),
+        // Create an entity to render the lines
+        let line_entity = state_lock.entities.new_component(ServerEntityState {
+            name: Some("Lines".to_string()),
             mutable: ServerEntityStateUpdatable {
                 parent: None,
                 transform: None,
                 representation: Some(ServerEntityRepresentation::new_render(
                     ServerRenderRepresentation {
-                        mesh: line_a_geometry.clone(),
-                        instances: None,
-                    },
-                )),
-                ..Default::default()
-            },
-        });
-        let line_b_entity = state_lock.entities.new_component(ServerEntityState {
-            name: Some("Lines B".to_string()),
-            mutable: ServerEntityStateUpdatable {
-                parent: None,
-                transform: None,
-                representation: Some(ServerEntityRepresentation::new_render(
-                    ServerRenderRepresentation {
-                        mesh: line_b_geometry.clone(),
-                        instances: None,
-                    },
-                )),
-                ..Default::default()
-            },
-        });
-        let line_c_entity = state_lock.entities.new_component(ServerEntityState {
-            name: Some("Lines C".to_string()),
-            mutable: ServerEntityStateUpdatable {
-                parent: None,
-                transform: None,
-                representation: Some(ServerEntityRepresentation::new_render(
-                    ServerRenderRepresentation {
-                        mesh: line_c_geometry.clone(),
+                        mesh: line_geometry.clone(),
                         instances: None,
                     },
                 )),
@@ -237,6 +213,23 @@ impl GridState {
             },
         });
 
+        // Create an entity to render the tfs
+        let transformer_entity = state_lock.entities.new_component(ServerEntityState {
+            name: Some("Transformers".to_string()),
+            mutable: ServerEntityStateUpdatable {
+                parent: None,
+                transform: None,
+                representation: Some(ServerEntityRepresentation::new_render(
+                    ServerRenderRepresentation {
+                        mesh: line_geometry.clone(),
+                        instances: None,
+                    },
+                )),
+                ..Default::default()
+            },
+        });
+
+        // Create an entity to render the gens
         let gen_entity = state_lock.entities.new_component(ServerEntityState {
             name: Some("Generator".to_string()),
             mutable: ServerEntityStateUpdatable {
@@ -254,6 +247,7 @@ impl GridState {
 
         let ts_len = system.lines.len();
 
+        // determine bounding box
         let mut bounds_min = glm::DVec2::new(1E9, 1E9);
         let mut bounds_max = glm::DVec2::new(-1E9, -1E9);
 
@@ -273,6 +267,7 @@ impl GridState {
         log::info!("Bounds {bounds_min:?} {bounds_max:?}");
         log::info!("Domain {domain:?}");
 
+        // set up hazard planes
         let lower_hazard_coord = glm::vec3(0.0, domain.voltage_to_height(0.95), 0.0);
         let upper_hazard_coord = glm::vec3(0.0, domain.voltage_to_height(1.05), 0.0);
 
@@ -343,17 +338,14 @@ impl GridState {
             system,
             time_step: (ts_len / 2).clamp(0, ts_len),
             max_time_step: ts_len,
-            line_a_geometry,
-            line_b_geometry,
-            line_c_geometry,
+            line_geometry,
+            transformer_geometry,
             gen_geometry,
-            line_a_buffer: vec![],
-            line_b_buffer: vec![],
-            line_c_buffer: vec![],
+            line_buffer: vec![],
+            transformer_buffer: vec![],
             gen_buffer: vec![],
-            line_a_entity,
-            line_b_entity,
-            line_c_entity,
+            line_entity,
+            transformer_entity,
             gen_entity,
             domain,
             lower_hazard: lower_hazard_entity,
@@ -650,9 +642,8 @@ fn recompute_gens<F>(
 
 pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
     log::debug!("Recomputing all");
-    gstate.line_a_buffer.clear();
-    gstate.line_b_buffer.clear();
-    gstate.line_c_buffer.clear();
+    gstate.line_buffer.clear();
+    gstate.transformer_buffer.clear();
     gstate.gen_buffer.clear();
 
     let line_ts = &gstate.system.lines[gstate.time_step];
@@ -676,7 +667,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         &gstate.domain,
         PHASE_OFFSET * 0.0,
         BAND_RED,
-        &mut gstate.line_a_buffer,
+        &mut gstate.line_buffer,
     );
 
     recompute_lines(
@@ -690,7 +681,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         &gstate.domain,
         PHASE_OFFSET * 1.0,
         BAND_GREEN,
-        &mut gstate.line_b_buffer,
+        &mut gstate.line_buffer,
     );
 
     recompute_lines(
@@ -704,7 +695,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         &gstate.domain,
         PHASE_OFFSET * 2.0,
         BAND_BLUE,
-        &mut gstate.line_c_buffer,
+        &mut gstate.line_buffer,
     );
 
     // ===
@@ -720,7 +711,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         &gstate.domain,
         PHASE_OFFSET * 0.0,
         BAND_RED,
-        &mut gstate.line_a_buffer,
+        &mut gstate.transformer_buffer,
     );
 
     recompute_tfs(
@@ -734,7 +725,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         &gstate.domain,
         PHASE_OFFSET * 1.0,
         BAND_GREEN,
-        &mut gstate.line_b_buffer,
+        &mut gstate.transformer_buffer,
     );
 
     recompute_tfs(
@@ -748,7 +739,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         &gstate.domain,
         PHASE_OFFSET * 2.0,
         BAND_BLUE,
-        &mut gstate.line_c_buffer,
+        &mut gstate.transformer_buffer,
     );
 
     // ===
@@ -770,23 +761,16 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
 
     update_buffers(
         server_state,
-        &gstate.line_a_buffer,
-        &gstate.line_a_geometry,
-        &gstate.line_a_entity,
+        &gstate.line_buffer,
+        &gstate.line_geometry,
+        &gstate.line_entity,
     );
 
     update_buffers(
         server_state,
-        &gstate.line_b_buffer,
-        &gstate.line_b_geometry,
-        &gstate.line_b_entity,
-    );
-
-    update_buffers(
-        server_state,
-        &gstate.line_c_buffer,
-        &gstate.line_c_geometry,
-        &gstate.line_c_entity,
+        &gstate.transformer_buffer,
+        &gstate.transformer_geometry,
+        &gstate.transformer_entity,
     );
 
     update_buffers(
@@ -797,6 +781,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
     );
 }
 
+/// Update instances with a buffer
 fn update_buffers(
     lock: &mut ServerState,
     input_buffer: &[u8],

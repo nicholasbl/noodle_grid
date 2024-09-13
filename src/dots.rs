@@ -1,22 +1,13 @@
 use std::{io::BufReader, path::Path};
 
-// enum End {
-//     A,
-//     B,
-// }
-
-// enum Phase {
-//     A,
-//     B,
-//     C,
-// }
-
+/// A single 2D position
 #[derive(Debug, Clone, Copy)]
 pub struct Position {
     pub sx: f64,
     pub sy: f64,
 }
 
+/// A pair of positions with a start and end point
 #[derive(Debug, Clone, Copy)]
 pub struct EndedPosition {
     pub sx: f64,
@@ -25,12 +16,14 @@ pub struct EndedPosition {
     pub ey: f64,
 }
 
+/// A quantity that is split by phase
 pub struct Phased<T = f32> {
     pub a: T,
     pub b: T,
     pub c: T,
 }
 
+/// A quantity that is split by phase, and is different at start and end points
 pub struct EndPhased<T = f32> {
     pub sa: T,
     pub sb: T,
@@ -40,6 +33,7 @@ pub struct EndPhased<T = f32> {
     pub ec: T,
 }
 
+/// A timestep record of a line
 pub struct LineState {
     pub voltage: EndPhased,
     pub real_power: EndPhased,
@@ -47,6 +41,7 @@ pub struct LineState {
     pub loc: EndedPosition,
 }
 
+/// A timestep of a transformer
 pub struct TransformerState {
     pub voltage: EndPhased,
 
@@ -57,6 +52,7 @@ pub struct TransformerState {
     pub loc: Position,
 }
 
+/// A timestep of a generator (PV or battery)
 pub struct GeneratorState {
     pub voltage: Phased,
     pub angle: Phased,
@@ -65,6 +61,7 @@ pub struct GeneratorState {
     pub loc: Position,
 }
 
+/// A cleaned up dataset
 pub struct PowerSystem {
     // These are all states by time;
     // lines[time][line]
@@ -74,6 +71,12 @@ pub struct PowerSystem {
     pub pvs: Vec<Vec<GeneratorState>>,
 }
 
+/// Load a power system capnp file
+///
+/// # Errors
+///
+/// This function will return an error if the capnp file is incomplete or
+/// does not have sufficient timesteps for all elements.
 pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
     let file = std::fs::File::open(path)?;
     let buff_reader = BufReader::new(&file);
@@ -118,7 +121,7 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
 
         let time_step_count = line_src.get(0).get_data()?.len();
 
-        println!("Time steps {time_step_count}");
+        log::debug!("Time steps {time_step_count}");
 
         for _ in 0..time_step_count {
             let mut per_time_step = vec![];
@@ -274,6 +277,7 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
     })
 }
 
+/// Attempt to determine the dataset name. If unable, the filename will be used.
 fn figure_name(path: &Path) -> String {
     let res = extract_name(path);
 
@@ -287,6 +291,7 @@ fn figure_name(path: &Path) -> String {
         .to_string()
 }
 
+/// Inspect the capnp file for a title
 fn extract_name(path: &Path) -> Option<String> {
     let file = std::fs::File::open(path).ok()?;
     let buff_reader = BufReader::new(&file);

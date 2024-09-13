@@ -1,0 +1,2 @@
+- Add spheres for busses
+- Move buffers around; all one for lines, all cyl for transformers
