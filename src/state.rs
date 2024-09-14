@@ -496,8 +496,8 @@ fn recompute_lines<F>(
             rot_vec.y,
             rot_vec.z,
             rot_vec.w, //
-            vars_size,
             watt_size,
+            vars_size,
             v.magnitude(),
             texture.y, //
         ];
