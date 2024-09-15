@@ -613,7 +613,7 @@ fn recompute_gens<F>(
             voltage,
             angle: _,
             real,
-            react: _,
+            react,
         } = getter(state);
 
         let p_a = glm::vec3(
@@ -622,10 +622,8 @@ fn recompute_gens<F>(
             d.lerp_y(state.loc.sy as f32),
         ) + offset;
 
-        // for now
-        let real = real.abs();
-
-        let width = d.real_power_to_width(real) * 2.0;
+        let width = d.real_power_to_width(real.abs()) * 2.0;
+        let height = d.reactive_power_to_width(react.abs()) * 2.0;
 
         log::debug!("GEN {p_a:?} {real} {width}");
 
@@ -633,7 +631,7 @@ fn recompute_gens<F>(
             p_a.x, p_a.y, p_a.z, 0.25, //
             1.0, 1.0, 1.0, 1.0, //
             0.0, 0.0, 0.0, 1.0, //
-            width, width, width, 0.5, //
+            width, height, width, 0.5, //
         ];
 
         dest.extend_from_slice(bytemuck::cast_slice(&mat));
