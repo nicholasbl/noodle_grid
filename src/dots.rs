@@ -1,4 +1,8 @@
-use std::{io::BufReader, path::Path};
+use std::{
+    io::BufReader,
+    ops::{Add, Div},
+    path::Path,
+};
 
 /// A single 2D position
 #[derive(Debug, Clone, Copy)]
@@ -31,6 +35,24 @@ pub struct EndPhased<T = f32> {
     pub ea: T,
     pub eb: T,
     pub ec: T,
+}
+
+impl<T> EndPhased<T>
+where
+    T: Add<Output = T> + Div<Output = T> + Copy,
+    f32: Into<T>,
+{
+    pub fn average_a(&self) -> T {
+        return (self.ea + self.sa) / 2.0.into();
+    }
+
+    pub fn average_b(&self) -> T {
+        return (self.eb + self.sb) / 2.0.into();
+    }
+
+    pub fn average_c(&self) -> T {
+        return (self.ec + self.sc) / 2.0.into();
+    }
 }
 
 /// A timestep record of a line

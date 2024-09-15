@@ -661,8 +661,8 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         |s| LineGetterResult {
             volt_start: s.voltage.sa,
             volt_end: s.voltage.ea,
-            watt: s.real_power.sa.abs(),
-            vars: s.reactive_power.sa.abs(),
+            watt: s.real_power.average_a().abs(),
+            vars: s.reactive_power.average_a().abs(),
         },
         &gstate.domain,
         PHASE_OFFSET * 0.0,
@@ -675,8 +675,8 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         |s| LineGetterResult {
             volt_start: s.voltage.sb,
             volt_end: s.voltage.eb,
-            watt: s.real_power.sb.abs(),
-            vars: s.reactive_power.sb.abs(),
+            watt: s.real_power.average_b().abs(),
+            vars: s.reactive_power.average_b().abs(),
         },
         &gstate.domain,
         PHASE_OFFSET * 1.0,
@@ -689,8 +689,8 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         |s| LineGetterResult {
             volt_start: s.voltage.sc,
             volt_end: s.voltage.ec,
-            watt: s.real_power.sc.abs(),
-            vars: s.reactive_power.sc.abs(),
+            watt: s.real_power.average_c().abs(),
+            vars: s.reactive_power.average_c().abs(),
         },
         &gstate.domain,
         PHASE_OFFSET * 2.0,
