@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    geometry::{make_cube, make_cyl, make_sphere},
+    geometry::{make_bus, make_cube, make_cyl, make_sphere},
     texture::make_hsv_texture,
     GeneratorState, LineState, PowerSystem, TransformerState,
 };
@@ -18,7 +18,7 @@ use nalgebra_glm as glm;
 #[inline]
 fn lerp<T>(x: T, x0: T, x1: T, y0: T, y1: T) -> T
 where
-    T: Sub<Output = T> + Add<Output = T> + Div<Output = T> + Mul<Output = T> + Copy,
+T: Sub<Output = T> + Add<Output = T> + Div<Output = T> + Mul<Output = T> + Copy,
 {
     y0 + (x - x0) * ((y1 - y0) / (x1 - x0))
 }
@@ -27,13 +27,13 @@ where
 #[inline]
 fn clamped_lerp<T>(x: T, x0: T, x1: T, y0: T, y1: T) -> T
 where
-    T: Sub<Output = T>
-        + Add<Output = T>
-        + Div<Output = T>
-        + Mul<Output = T>
-        + Copy
-        + Sized
-        + PartialOrd,
+T: Sub<Output = T>
++ Add<Output = T>
++ Div<Output = T>
++ Mul<Output = T>
++ Copy
++ Sized
++ PartialOrd,
 {
     num_traits::clamp(lerp(x, x0, x1, y0, y1), y0, y1)
 }
@@ -43,13 +43,13 @@ where
 struct Domain {
     x_bounds: glm::DVec2,
     y_bounds: glm::DVec2,
-
+    
     volt_height_min: f32,
     volt_height_max: f32,
-
+    
     volt_min: f32,
     volt_max: f32,
-
+    
     tube_min: f32,
     tube_max: f32,
 }
@@ -74,17 +74,17 @@ impl Domain {
         let range = bound_max - bound_min;
         let max_dim = glm::DVec2::repeat(range.max() / 2.0);
         let center = (bound_min + bound_max) / 2.0;
-
+        
         let nl = center - max_dim;
         let nh = center + max_dim;
-
+        
         Self {
             x_bounds: glm::DVec2::new(nl.x, nh.x),
             y_bounds: glm::DVec2::new(nl.y, nh.y),
             ..Default::default()
         }
     }
-
+    
     #[inline]
     fn voltage_to_height(&self, v: f32) -> f32 {
         clamped_lerp(
@@ -95,17 +95,17 @@ impl Domain {
             self.volt_height_max,
         )
     }
-
+    
     #[inline]
     fn real_power_to_width(&self, v: f32) -> f32 {
         clamped_lerp(v, 0.0, 704.0, self.tube_min, self.tube_max)
     }
-
+    
     #[inline]
     fn reactive_power_to_width(&self, v: f32) -> f32 {
         clamped_lerp(v, 0.0, 704.0, self.tube_min, self.tube_max)
     }
-
+    
     #[inline]
     fn lerp_x(&self, v: f32) -> f32 {
         lerp(
@@ -116,7 +116,7 @@ impl Domain {
             1.0_f64,
         ) as f32
     }
-
+    
     #[inline]
     fn lerp_y(&self, v: f32) -> f32 {
         lerp(
@@ -134,28 +134,31 @@ const PHASE_OFFSET: glm::Vec3 = glm::Vec3::new(0.001, 0.0, -0.001);
 
 pub struct GridState {
     state: ServerStatePtr,
-
+    
     system: PowerSystem,
     time_step: usize,
     max_time_step: usize,
-
+    
     domain: Domain,
-
+    
     lower_hazard: EntityReference,
     upper_hazard: EntityReference,
-
+    
+    bus_entity: EntityReference,
     line_entity: EntityReference,
     transformer_entity: EntityReference,
     gen_entity: EntityReference,
-
+    
+    bus_geometry: GeometryReference,
     line_geometry: GeometryReference,
     transformer_geometry: GeometryReference,
     gen_geometry: GeometryReference,
-
+    
+    bus_buffer: Vec<u8>,
     line_buffer: Vec<u8>,
     transformer_buffer: Vec<u8>,
     gen_buffer: Vec<u8>,
-
+    
     active_timer: Option<tokio::sync::oneshot::Sender<bool>>,
     send_back: Option<tokio::sync::mpsc::Sender<bool>>,
 }
@@ -165,10 +168,10 @@ pub type GridStatePtr = Arc<Mutex<GridState>>;
 impl GridState {
     pub fn new(state: ServerStatePtr, system: PowerSystem) -> GridStatePtr {
         let mut state_lock = state.lock().unwrap();
-
+        
         // load color texture for instances
         let texture = make_hsv_texture(&mut state_lock);
-
+        
         // build a material for lines
         let line_mat = state_lock.materials.new_component(ServerMaterialState {
             name: Some("Line Material".into()),
@@ -187,16 +190,35 @@ impl GridState {
                 ..Default::default()
             },
         });
-
+        
+        // Create geometry for the buses
+        let bus_geometry = make_bus(&mut state_lock, glm::identity(), line_mat.clone());
+        
         // Create geometry for the lines
         let line_geometry = make_cube(&mut state_lock, glm::identity(), line_mat.clone());
-
+        
         // Create geometry for the tfs
         let transformer_geometry = make_cyl(&mut state_lock, glm::identity(), line_mat.clone());
-
+        
         // Create geometry for the generators
         let gen_geometry = make_sphere(&mut state_lock, glm::Vec3::new(1.0, 1.0, 0.0));
-
+        
+        // Create an entity to render the buses
+        let bus_entity = state_lock.entities.new_component(ServerEntityState {
+            name: Some("Buses".to_string()),
+            mutable: ServerEntityStateUpdatable {
+                parent: None,
+                transform: None,
+                representation: Some(ServerEntityRepresentation::new_render(
+                    ServerRenderRepresentation {
+                        mesh: bus_geometry.clone(),
+                        instances: None,
+                    },
+                )),
+                ..Default::default()
+            },
+        });
+        
         // Create an entity to render the lines
         let line_entity = state_lock.entities.new_component(ServerEntityState {
             name: Some("Lines".to_string()),
@@ -212,7 +234,7 @@ impl GridState {
                 ..Default::default()
             },
         });
-
+        
         // Create an entity to render the tfs
         let transformer_entity = state_lock.entities.new_component(ServerEntityState {
             name: Some("Transformers".to_string()),
@@ -221,14 +243,14 @@ impl GridState {
                 transform: None,
                 representation: Some(ServerEntityRepresentation::new_render(
                     ServerRenderRepresentation {
-                        mesh: line_geometry.clone(),
+                        mesh: transformer_geometry.clone(),
                         instances: None,
                     },
                 )),
                 ..Default::default()
             },
         });
-
+        
         // Create an entity to render the gens
         let gen_entity = state_lock.entities.new_component(ServerEntityState {
             name: Some("Generator".to_string()),
@@ -244,38 +266,38 @@ impl GridState {
                 ..Default::default()
             },
         });
-
+        
         let ts_len = system.lines.len();
-
+        
         // determine bounding box
         let mut bounds_min = glm::DVec2::new(1E9, 1E9);
         let mut bounds_max = glm::DVec2::new(-1E9, -1E9);
-
+        
         for time_step in &system.lines {
             for line in time_step {
                 let pa = glm::DVec2::new(line.loc.sx, line.loc.sy);
                 let pb = glm::DVec2::new(line.loc.ex, line.loc.ey);
-
+                
                 bounds_min = glm::min2(&glm::min2(&bounds_min, &pa), &pb);
                 bounds_max = glm::max2(&glm::max2(&bounds_max, &pa), &pb);
             }
         }
-
+        
         let domain = Domain::new(bounds_min, bounds_max);
-
+        
         log::info!("Loaded powersystem with {ts_len} timesteps");
         log::info!("Bounds {bounds_min:?} {bounds_max:?}");
         log::info!("Domain {domain:?}");
-
+        
         // set up hazard planes
         let lower_hazard_coord = glm::vec3(0.0, domain.voltage_to_height(0.95), 0.0);
         let upper_hazard_coord = glm::vec3(0.0, domain.voltage_to_height(1.05), 0.0);
-
+        
         let hazard_mat = state_lock.materials.new_component(ServerMaterialState {
             name: None,
             mutable: ServerMaterialStateUpdatable {
                 pbr_info: Some(ServerPBRInfo {
-                    base_color: [1.0, 1.0, 1.0, 0.75],
+                    base_color: [1.0, 1.0, 1.0, 0.25],
                     metallic: Some(0.0),
                     roughness: Some(1.0),
                     ..Default::default()
@@ -284,23 +306,23 @@ impl GridState {
                 ..Default::default()
             },
         });
-
+        
         let hazard_geom = make_cube(
             &mut state_lock,
-            glm::scaling(&glm::vec3(2.0, 0.01, 2.0)),
+            glm::scaling(&glm::vec3(2.0, 0.001, 2.0)),
             hazard_mat,
         );
-
+        
         let lower_hazard_entity = state_lock.entities.new_component(ServerEntityState {
             name: Some("Lower Voltage Hazard".into()),
             mutable: ServerEntityStateUpdatable {
                 parent: None,
                 transform: Some(
                     glm::translation(&lower_hazard_coord)
-                        .data
-                        .as_slice()
-                        .try_into()
-                        .unwrap(),
+                    .data
+                    .as_slice()
+                    .try_into()
+                    .unwrap(),
                 ),
                 representation: Some(ServerEntityRepresentation::new_render(
                     ServerRenderRepresentation {
@@ -311,17 +333,17 @@ impl GridState {
                 ..Default::default()
             },
         });
-
+        
         let upper_hazard_entity = state_lock.entities.new_component(ServerEntityState {
             name: Some("Upper Voltage Hazard".into()),
             mutable: ServerEntityStateUpdatable {
                 parent: None,
                 transform: Some(
                     glm::translation(&upper_hazard_coord)
-                        .data
-                        .as_slice()
-                        .try_into()
-                        .unwrap(),
+                    .data
+                    .as_slice()
+                    .try_into()
+                    .unwrap(),
                 ),
                 representation: Some(ServerEntityRepresentation::new_render(
                     ServerRenderRepresentation {
@@ -332,18 +354,21 @@ impl GridState {
                 ..Default::default()
             },
         });
-
+        
         let ret = Arc::new(Mutex::new(GridState {
             state: state.clone(),
             system,
             time_step: (ts_len / 2).clamp(0, ts_len),
             max_time_step: ts_len,
+            bus_geometry,
             line_geometry,
             transformer_geometry,
             gen_geometry,
+            bus_buffer: vec![],
             line_buffer: vec![],
             transformer_buffer: vec![],
             gen_buffer: vec![],
+            bus_entity,
             line_entity,
             transformer_entity,
             gen_entity,
@@ -353,34 +378,34 @@ impl GridState {
             active_timer: None,
             send_back: None,
         }));
-
+        
         {
             let (tx, rx) = tokio::sync::mpsc::channel(16);
-
+            
             tokio::spawn(advance_watcher(ret.clone(), rx));
-
+            
             let mut lock = ret.lock().unwrap();
-
+            
             lock.send_back = Some(tx);
         }
-
+        
         ret
     }
-
+    
     pub fn post_setup(state: &ServerStatePtr, app_state: &GridStatePtr) {
         let mut state_lock = state.lock().unwrap();
         let comp_set_time = state_lock
-            .methods
-            .new_owned_component(create_set_time(app_state.clone()));
-
+        .methods
+        .new_owned_component(create_set_time(app_state.clone()));
+        
         let comp_step_time = state_lock
-            .methods
-            .new_owned_component(create_step_time(app_state.clone()));
-
+        .methods
+        .new_owned_component(create_step_time(app_state.clone()));
+        
         let comp_adv_time = state_lock
-            .methods
-            .new_owned_component(create_play_time(app_state.clone()));
-
+        .methods
+        .new_owned_component(create_play_time(app_state.clone()));
+        
         state_lock.update_document(ServerDocumentUpdate {
             methods_list: Some(vec![comp_set_time, comp_step_time, comp_adv_time]),
             signals_list: None,
@@ -390,10 +415,10 @@ impl GridState {
 
 fn roll_free_rotation(direction: glm::Vec3) -> glm::Quat {
     let up = glm::vec3(0.0, 1.0, 0.0);
-
+    
     let a = up.cross(&direction).normalize();
     let b = direction.cross(&a).normalize();
-
+    
     let m = glm::mat3(
         a.x,
         b.x,
@@ -405,7 +430,7 @@ fn roll_free_rotation(direction: glm::Vec3) -> glm::Quat {
         b.z,
         direction.z,
     );
-
+    
     glm::mat3_to_quat(&m)
 }
 
@@ -428,6 +453,62 @@ struct GeneratorGetterResult {
     pub angle: f32,
     pub real: f32,
     pub react: f32,
+}
+
+fn recompute_buses<F>(
+    src: &[LineState],
+    getter: F,
+    d: &Domain,
+    offset: glm::Vec3,
+    color_band: f32,
+    dest: &mut Vec<u8>,
+) where
+F: Fn(&LineState) -> LineGetterResult,
+{
+    log::debug!("Recompute buses {}", src.len());
+    
+    for state in src {
+        let LineGetterResult {
+            volt_start,
+            volt_end,
+            watt,
+            vars,
+        } = getter(state);
+        
+        let p_a = glm::vec3(
+            d.lerp_x(state.loc.sx as f32),
+            d.voltage_to_height(volt_start),
+            d.lerp_y(state.loc.sy as f32),
+        ) + offset;
+        
+        let p_b = glm::vec3(
+            d.lerp_x(state.loc.ex as f32),
+            d.voltage_to_height(volt_end),
+            d.lerp_y(state.loc.ey as f32),
+        ) + offset;
+        
+        let v = p_b - p_a;
+        let rot = roll_free_rotation(v.normalize());
+        let rot_vec = rot.as_vector();
+
+        let center = p_a;
+        
+        let width = d.real_power_to_width(watt);
+        let height = 1.25*d.reactive_power_to_width(vars);
+        
+        let texture = glm::vec2(color_band, 0.60);
+        
+        // large tube to show tf bounds
+        let mat = [
+        center.x, center.y, center.z, texture.x, //
+        1.0, 1.0, 1.0, 1.0, //
+        rot_vec.x, rot_vec.y, rot_vec.z, rot_vec.w, //
+        width, height, width, texture.y, //
+        ];
+        
+        dest.extend_from_slice(bytemuck::cast_slice(&mat));
+                    
+    }
 }
 
 fn recompute_lines<F>(
@@ -516,7 +597,7 @@ fn recompute_tfs<F>(
     color_band: f32,
     dest: &mut Vec<u8>,
 ) where
-    F: Fn(&TransformerState) -> TfGetterResult,
+F: Fn(&TransformerState) -> TfGetterResult,
 {
     //log::debug!("Recompute tfs {}", src.len());
     for state in src {
@@ -526,74 +607,74 @@ fn recompute_tfs<F>(
             tap: _,
             tap_change: _,
         } = getter(state);
-
+        
         let p_a = glm::vec3(
             d.lerp_x(state.loc.sx as f32),
             d.voltage_to_height(volt_start),
             d.lerp_y(state.loc.sy as f32),
         ) + offset;
-
+        
         let p_b = glm::vec3(
             d.lerp_x(state.loc.sx as f32),
             d.voltage_to_height(volt_end),
             d.lerp_y(state.loc.sy as f32),
         ) + offset;
-
+        
         // log::debug!(
         //     "Recompute: {volt_start} {volt_end} {} {} {p_a} {p_b}",
         //     state.loc.sx,
         //     state.loc.sy
         // );
-
+        
         //let v = p_b - p_a;
-
+        
         // reverse?
-
+        
         //let rot = roll_free_rotation(v.normalize());
-
+        
         let center = (p_a + p_b) / 2.0;
-
+        
         let height = (p_b.y - p_a.y).abs();
-
+        
         if p_a.y < 0.000001 || p_b.y < 0.000001 {
             //log::debug!("SKIP TF");
             continue;
         }
-
+        
         let texture = glm::vec2(color_band, 0.85);
-
+        
         // large tube to show tf bounds
         let mat = [
-            center.x, center.y, center.z, texture.x, //
-            1.0, 1.0, 1.0, 1.0, //
-            0.0, 0.0, 0.0, 1.0, //
-            d.tube_max, height, d.tube_max, texture.y, //
+        center.x, center.y, center.z, texture.x, //
+        1.0, 1.0, 1.0, 1.0, //
+        0.0, 0.0, 0.0, 1.0, //
+        d.tube_max, height, d.tube_max, texture.y, //
         ];
-
+        
         dest.extend_from_slice(bytemuck::cast_slice(&mat));
-
+        
         let hx = d.volt_height_max - d.volt_height_min;
-
+        
         // thinner tube to show tf to map
         let mat = [
-            center.x,
-            hx / 2.0,
-            center.z,
-            texture.x, //
-            1.0,
-            1.0,
-            1.0,
-            1.0, //
-            0.0,
-            0.0,
-            0.0,
-            1.0, //
-            d.tube_min,
-            hx,
-            d.tube_min,
-            texture.y, //
+        center.x,
+        hx / 2.0,
+        center.z,
+        texture.x, //
+        1.0,
+        1.0,
+        1.0,
+        1.0, //
+        0.0,
+        0.0,
+        0.0,
+        1.0, //
+        d.tube_min,
+        hx,
+        d.tube_min,
+        texture.y, //
         ];
-
+        
         dest.extend_from_slice(bytemuck::cast_slice(&mat));
     }
 }
@@ -605,7 +686,7 @@ fn recompute_gens<F>(
     offset: glm::Vec3,
     dest: &mut Vec<u8>,
 ) where
-    F: Fn(&GeneratorState) -> GeneratorGetterResult,
+F: Fn(&GeneratorState) -> GeneratorGetterResult,
 {
     log::debug!("Recompute gens {}", src.len());
     for state in src {
@@ -615,45 +696,60 @@ fn recompute_gens<F>(
             real,
             react,
         } = getter(state);
-
+        
         let p_a = glm::vec3(
             d.lerp_x(state.loc.sx as f32),
             d.voltage_to_height(voltage),
             d.lerp_y(state.loc.sy as f32),
         ) + offset;
-
+        
         let width = d.real_power_to_width(real.abs()) * 2.0;
         let height = d.reactive_power_to_width(react.abs()) * 2.0;
-
+        
         log::debug!("GEN {p_a:?} {real} {width}");
-
+        
         let mat = [
-            p_a.x, p_a.y, p_a.z, 0.25, //
-            1.0, 1.0, 1.0, 1.0, //
-            0.0, 0.0, 0.0, 1.0, //
-            width, height, width, 0.5, //
+        p_a.x, p_a.y, p_a.z, 0.25, //
+        1.0, 1.0, 1.0, 1.0, //
+        0.0, 0.0, 0.0, 1.0, //
+        width, height, width, 0.5, //
         ];
-
+        
         dest.extend_from_slice(bytemuck::cast_slice(&mat));
     }
 }
 
 pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
     log::debug!("Recomputing all");
+    gstate.bus_buffer.clear();
     gstate.line_buffer.clear();
     gstate.transformer_buffer.clear();
     gstate.gen_buffer.clear();
-
+    
     let line_ts = &gstate.system.lines[gstate.time_step];
     let tf_ts = &gstate.system.tfs[gstate.time_step];
     let gen_ts = &gstate.system.pvs[gstate.time_step];
-
+    
     // ===
-
+    
     const BAND_RED: f32 = 0.0;
     const BAND_GREEN: f32 = 0.33;
     const BAND_BLUE: f32 = 0.66;
-
+    
+    recompute_buses(
+        line_ts,
+        |s| LineGetterResult {
+            volt_start: s.voltage.sa,
+            volt_end: s.voltage.ea,
+            watt: s.real_power.average_a().abs(),
+            vars: s.reactive_power.average_a().abs(),
+        },
+        &gstate.domain,
+        PHASE_OFFSET * 0.0,
+        BAND_RED,
+        &mut gstate.bus_buffer,
+    );
+    
     recompute_lines(
         line_ts,
         |s| LineGetterResult {
@@ -667,7 +763,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         BAND_RED,
         &mut gstate.line_buffer,
     );
-
+    
     recompute_lines(
         line_ts,
         |s| LineGetterResult {
@@ -681,7 +777,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         BAND_GREEN,
         &mut gstate.line_buffer,
     );
-
+    
     recompute_lines(
         line_ts,
         |s| LineGetterResult {
@@ -695,9 +791,9 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         BAND_BLUE,
         &mut gstate.line_buffer,
     );
-
+    
     // ===
-
+    
     recompute_tfs(
         tf_ts,
         |s| TfGetterResult {
@@ -711,7 +807,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         BAND_RED,
         &mut gstate.transformer_buffer,
     );
-
+    
     recompute_tfs(
         tf_ts,
         |s| TfGetterResult {
@@ -725,7 +821,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         BAND_GREEN,
         &mut gstate.transformer_buffer,
     );
-
+    
     recompute_tfs(
         tf_ts,
         |s| TfGetterResult {
@@ -739,9 +835,9 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         BAND_BLUE,
         &mut gstate.transformer_buffer,
     );
-
+    
     // ===
-
+    
     recompute_gens(
         gen_ts,
         |s| GeneratorGetterResult {
@@ -754,8 +850,15 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         PHASE_OFFSET * 0.0,
         &mut gstate.gen_buffer,
     );
-
+    
     // ===
+    
+    update_buffers(
+        server_state,
+        &gstate.bus_buffer,
+        &gstate.bus_geometry,
+        &gstate.bus_entity,
+    );
 
     update_buffers(
         server_state,
@@ -763,14 +866,14 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         &gstate.line_geometry,
         &gstate.line_entity,
     );
-
+    
     update_buffers(
         server_state,
         &gstate.transformer_buffer,
         &gstate.transformer_geometry,
         &gstate.transformer_entity,
     );
-
+    
     update_buffers(
         server_state,
         &gstate.gen_buffer,
@@ -787,13 +890,13 @@ fn update_buffers(
     entity: &EntityReference,
 ) {
     let line_buffer = lock
-        .buffers
-        .new_component(BufferState::new_from_bytes(input_buffer.to_owned()));
-
+    .buffers
+    .new_component(BufferState::new_from_bytes(input_buffer.to_owned()));
+    
     let view = lock
-        .buffer_views
-        .new_component(ServerBufferViewState::new_from_whole_buffer(line_buffer));
-
+    .buffer_views
+    .new_component(ServerBufferViewState::new_from_whole_buffer(line_buffer));
+    
     let update = ServerEntityStateUpdatable {
         representation: Some(ServerEntityRepresentation::new_render(
             ServerRenderRepresentation {
@@ -807,113 +910,114 @@ fn update_buffers(
         )),
         ..Default::default()
     };
-
+    
     update.patch(entity);
 }
 
 make_method_function!(set_time,
-GridState,
+    GridState,
 "noo::set_time",
 "Set the time of the visualization",
-| time : Value : "Floating point time" |,
-{
-    let time : f32 = from_cbor(time).unwrap_or_default();
-    let time : usize = time as usize;
-    let time = time.clamp(0, app.max_time_step - 1);
-    app.time_step = time;
-    recompute_all(app, state);
-    Ok(None)
-});
-
-make_method_function!(step_time,
-GridState,
+    | time : Value : "Floating point time" |,
+    {
+        let time : f32 = from_cbor(time).unwrap_or_default();
+        let time : usize = time as usize;
+        let time = time.clamp(0, app.max_time_step - 1);
+        app.time_step = time;
+        recompute_all(app, state);
+        Ok(None)
+    });
+    
+    make_method_function!(step_time,
+        GridState,
 "noo::step_time",
 "Advance the time of the visualization",
-| time : Value : "Integer step direction" |,
-{
-    let time : i32 = from_cbor(time).unwrap_or_default();
-    let time = (app.time_step as i32 + time).clamp(0, app.max_time_step as i32 - 1);
-
-    log::debug!("Stepping time: {time}");
-
-    app.time_step = time as usize;
-    recompute_all(app, state);
-
-    log::debug!("All done");
-    Ok(None)
-});
-
-async fn advance_timer(
-    send_back: tokio::sync::mpsc::Sender<bool>,
-    mut to_stop: tokio::sync::oneshot::Receiver<bool>,
-) {
-    loop {
-        log::debug!("Advancer");
-        tokio::select! {
-            _ = tokio::time::sleep(Duration::from_secs_f32(0.25)) => {
-                log::debug!("Sleep done");
-                if send_back.send(true).await.is_err() {
-                    log::debug!("closing advance timer");
-                    return
+        | time : Value : "Integer step direction" |,
+        {
+            let time : i32 = from_cbor(time).unwrap_or_default();
+            let time = (app.time_step as i32 + time).clamp(0, app.max_time_step as i32 - 1);
+            
+            log::debug!("Stepping time: {time}");
+            
+            app.time_step = time as usize;
+            recompute_all(app, state);
+            
+            log::debug!("All done");
+            Ok(None)
+        });
+        
+        async fn advance_timer(
+            send_back: tokio::sync::mpsc::Sender<bool>,
+            mut to_stop: tokio::sync::oneshot::Receiver<bool>,
+        ) {
+            loop {
+                log::debug!("Advancer");
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs_f32(0.25)) => {
+                        log::debug!("Sleep done");
+                        if send_back.send(true).await.is_err() {
+                            log::debug!("closing advance timer");
+                            return
+                        }
+                    },
+                    _ = &mut to_stop => {
+                        log::debug!("closing advance timer");
+                        return
+                    }
                 }
-            },
-            _ = &mut to_stop => {
-                log::debug!("closing advance timer");
-                return
             }
         }
-    }
-}
-
-fn check_launch_timer(gs: &mut GridState, start_timer: bool) {
-    if gs.active_timer.is_some() {
-        if start_timer {
-            // already have timer going. skip
-        } else {
-            // timer going and we want to stop. issue stop.
-            log::debug!("Issuing stop");
-            let sender = gs.active_timer.take().unwrap();
-            let _ = sender.send(true);
+        
+        fn check_launch_timer(gs: &mut GridState, start_timer: bool) {
+            if gs.active_timer.is_some() {
+                if start_timer {
+                    // already have timer going. skip
+                } else {
+                    // timer going and we want to stop. issue stop.
+                    log::debug!("Issuing stop");
+                    let sender = gs.active_timer.take().unwrap();
+                    let _ = sender.send(true);
+                }
+            } else if start_timer {
+                // timer is not running and they want one. start;
+                log::debug!("Launching player");
+                let (os_tx, os_rx) = tokio::sync::oneshot::channel();
+                
+                gs.active_timer = Some(os_tx);
+                let send_back = gs.send_back.clone().unwrap();
+                
+                tokio::spawn(advance_timer(send_back, os_rx));
+            } else {
+                // timer not running and they want a stop. skip
+            }
+            log::debug!("Check launch done");
         }
-    } else if start_timer {
-        // timer is not running and they want one. start;
-        log::debug!("Launching player");
-        let (os_tx, os_rx) = tokio::sync::oneshot::channel();
-
-        gs.active_timer = Some(os_tx);
-        let send_back = gs.send_back.clone().unwrap();
-
-        tokio::spawn(advance_timer(send_back, os_rx));
-    } else {
-        // timer not running and they want a stop. skip
-    }
-    log::debug!("Check launch done");
-}
-
-make_method_function!(play_time,
-GridState,
+        
+        make_method_function!(play_time,
+            GridState,
 "noo::animate_time",
 "Play the visualization",
-| time : Value : "Integer step direction" |,
-{
-    let time : i32 = from_cbor(time).unwrap_or_default();
-    let time = time.clamp(0, 1) == 1;
-
-    log::debug!("Asking to play time: {time}");
-
-    check_launch_timer(app, time);
-    Ok(None)
-});
-
-async fn advance_watcher(gs: GridStatePtr, mut rx: tokio::sync::mpsc::Receiver<bool>) {
-    while rx.recv().await.is_some() {
-        log::debug!("advancing time");
-        let mut lock = gs.lock().unwrap();
-        lock.time_step = (lock.time_step + 1) % lock.max_time_step;
-
-        let ss_arc = lock.state.clone();
-        let mut ss_lock = ss_arc.lock().unwrap();
-
-        recompute_all(&mut lock, &mut ss_lock);
-    }
-}
+            | time : Value : "Integer step direction" |,
+            {
+                let time : i32 = from_cbor(time).unwrap_or_default();
+                let time = time.clamp(0, 1) == 1;
+                
+                log::debug!("Asking to play time: {time}");
+                
+                check_launch_timer(app, time);
+                Ok(None)
+            });
+            
+            async fn advance_watcher(gs: GridStatePtr, mut rx: tokio::sync::mpsc::Receiver<bool>) {
+                while rx.recv().await.is_some() {
+                    log::debug!("advancing time");
+                    let mut lock = gs.lock().unwrap();
+                    lock.time_step = (lock.time_step + 1) % lock.max_time_step;
+                    
+                    let ss_arc = lock.state.clone();
+                    let mut ss_lock = ss_arc.lock().unwrap();
+                    
+                    recompute_all(&mut lock, &mut ss_lock);
+                }
+            }
+            
