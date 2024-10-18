@@ -83,6 +83,16 @@ pub struct GeneratorState {
     pub loc: Position,
 }
 
+#[derive(Debug)]
+pub struct Floorplan {
+    pub ll_x: f64,
+    pub ll_y: f64,
+    pub ur_x: f64,
+    pub ur_y: f64,
+
+    pub data: Vec<u8>,
+}
+
 /// A cleaned up dataset
 pub struct PowerSystem {
     // These are all states by time;
@@ -91,6 +101,8 @@ pub struct PowerSystem {
     pub lines: Vec<Vec<LineState>>,
     pub tfs: Vec<Vec<TransformerState>>,
     pub pvs: Vec<Vec<GeneratorState>>,
+
+    pub floor_plan: Option<Floorplan>,
 }
 
 /// Load a power system capnp file
@@ -291,11 +303,30 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
 
     let title = figure_name(path);
 
+    let fp: Option<Floorplan> = if let Ok(fp) = ds.get_floorplan() {
+        use crate::power_system_capnp::floor_plan::Which;
+
+        match fp.which().unwrap() {
+            Which::ImageEmbedded(Ok(x)) => Some(Floorplan {
+                ll_x: fp.get_lower_left_x(),
+                ll_y: fp.get_lower_left_y(),
+                ur_x: fp.get_upper_right_x(),
+                ur_y: fp.get_upper_right_y(),
+                data: x.to_owned(),
+            }),
+            Which::ImageURL(_) => unimplemented!("Fetch yet implemented"),
+            _ => None,
+        }
+    } else {
+        None
+    };
+
     Ok(PowerSystem {
         title,
         lines,
         tfs,
         pvs,
+        floor_plan: fp,
     })
 }
 
