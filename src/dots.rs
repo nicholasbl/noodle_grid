@@ -147,11 +147,16 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
                     },
                     f.get_data().unwrap(),
                     f.get_id().unwrap().to_str().unwrap(),
+                    (
+                        f.get_voltage_divisor(),
+                        f.get_wattage_divisor(),
+                        f.get_vars_divisor(),
+                    ),
                 )
             })
             .collect();
 
-        let mut iters: Vec<_> = datas.iter().map(|f| (f.0, f.1.iter(), f.2)).collect();
+        let mut iters: Vec<_> = datas.iter().map(|f| (f.0, f.1.iter(), f.2, f.3)).collect();
 
         let time_step_count = line_src.get(0).get_data()?.len();
 
@@ -168,30 +173,32 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
                     continue;
                 };
 
+                let (volt_divisor, watt_divisor, var_divisors) = iter.3;
+
                 per_time_step.push(LineState {
                     voltage: EndPhased {
-                        sa: a.get_volt_a_from(),
-                        sb: a.get_volt_b_from(),
-                        sc: a.get_volt_c_from(),
-                        ea: a.get_volt_a_to(),
-                        eb: a.get_volt_b_to(),
-                        ec: a.get_volt_c_to(),
+                        sa: a.get_volt_a_from() / (volt_divisor as f32),
+                        sb: a.get_volt_b_from() / (volt_divisor as f32),
+                        sc: a.get_volt_c_from() / (volt_divisor as f32),
+                        ea: a.get_volt_a_to() / (volt_divisor as f32),
+                        eb: a.get_volt_b_to() / (volt_divisor as f32),
+                        ec: a.get_volt_c_to() / (volt_divisor as f32),
                     },
                     real_power: EndPhased {
-                        sa: a.get_real_a_from(),
-                        sb: a.get_real_b_from(),
-                        sc: a.get_real_c_from(),
-                        ea: a.get_real_a_to(),
-                        eb: a.get_real_b_to(),
-                        ec: a.get_real_c_to(),
+                        sa: a.get_real_a_from() / (watt_divisor as f32),
+                        sb: a.get_real_b_from() / (watt_divisor as f32),
+                        sc: a.get_real_c_from() / (watt_divisor as f32),
+                        ea: a.get_real_a_to() / (watt_divisor as f32),
+                        eb: a.get_real_b_to() / (watt_divisor as f32),
+                        ec: a.get_real_c_to() / (watt_divisor as f32),
                     },
                     reactive_power: EndPhased {
-                        sa: a.get_react_a_from(),
-                        sb: a.get_react_b_from(),
-                        sc: a.get_react_c_from(),
-                        ea: a.get_react_a_to(),
-                        eb: a.get_react_b_to(),
-                        ec: a.get_react_c_to(),
+                        sa: a.get_react_a_from() / (var_divisors as f32),
+                        sb: a.get_react_b_from() / (var_divisors as f32),
+                        sc: a.get_react_c_from() / (var_divisors as f32),
+                        ea: a.get_react_a_to() / (var_divisors as f32),
+                        eb: a.get_react_b_to() / (var_divisors as f32),
+                        ec: a.get_react_c_to() / (var_divisors as f32),
                     },
                     loc: iter.0,
                 });
@@ -215,26 +222,33 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
                         sy: f.get_position_y(),
                     },
                     f.get_data().unwrap(),
+                    (
+                        f.get_voltage_divisor(),
+                        f.get_wattage_divisor(),
+                        f.get_vars_divisor(),
+                    ),
                 )
             })
             .collect();
 
-        let mut iters: Vec<_> = datas.iter().map(|f| (f.0, f.1.iter())).collect();
+        let mut iters: Vec<_> = datas.iter().map(|f| (f.0, f.1.iter(), f.2)).collect();
 
         let time_step_count = data_src.get(0).get_data()?.len();
 
         for _ in 0..time_step_count {
             let mut per_time_step = vec![];
             for iter in iters.iter_mut() {
+                let (volt_divisor, _, _) = iter.2;
+
                 let a = iter.1.next().unwrap();
                 per_time_step.push(TransformerState {
                     voltage: EndPhased {
-                        sa: a.get_volt_a_from(),
-                        sb: a.get_volt_b_from(),
-                        sc: a.get_volt_c_from(),
-                        ea: a.get_volt_a_to(),
-                        eb: a.get_volt_b_to(),
-                        ec: a.get_volt_c_to(),
+                        sa: a.get_volt_a_from() / (volt_divisor as f32),
+                        sb: a.get_volt_b_from() / (volt_divisor as f32),
+                        sc: a.get_volt_c_from() / (volt_divisor as f32),
+                        ea: a.get_volt_a_to() / (volt_divisor as f32),
+                        eb: a.get_volt_b_to() / (volt_divisor as f32),
+                        ec: a.get_volt_c_to() / (volt_divisor as f32),
                     },
                     tap: Phased {
                         a: a.get_tap_a(),
@@ -268,23 +282,30 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
                         sy: f.get_position_y(),
                     },
                     f.get_data().unwrap(),
+                    (
+                        f.get_voltage_divisor(),
+                        f.get_wattage_divisor(),
+                        f.get_vars_divisor(),
+                    ),
                 )
             })
             .collect();
 
-        let mut iters: Vec<_> = datas.iter().map(|f| (f.0, f.1.iter())).collect();
+        let mut iters: Vec<_> = datas.iter().map(|f| (f.0, f.1.iter(), f.2)).collect();
 
         let time_step_count = data_src.get(0).get_data()?.len();
 
         for _ in 0..time_step_count {
             let mut per_time_step = vec![];
             for iter in iters.iter_mut() {
+                let (volt_divisor, _, _) = iter.2;
+
                 let a = iter.1.next().unwrap();
                 per_time_step.push(GeneratorState {
                     voltage: Phased {
-                        a: a.get_volt_a(),
-                        b: a.get_volt_b(),
-                        c: a.get_volt_c(),
+                        a: a.get_volt_a() / (volt_divisor as f32),
+                        b: a.get_volt_b() / (volt_divisor as f32),
+                        c: a.get_volt_c() / (volt_divisor as f32),
                     },
                     angle: Phased {
                         a: a.get_angle_a(),
