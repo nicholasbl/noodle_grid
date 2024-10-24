@@ -1,9 +1,16 @@
 mod arguments;
+mod basemap;
+mod domain;
 mod dots;
 mod geometry;
+mod hazard;
+mod import_obj;
+mod instance;
+mod instanced_item;
 mod power_system_capnp;
 mod state;
 mod texture;
+mod utility;
 
 use state::*;
 

@@ -3,6 +3,8 @@ use std::iter::repeat;
 use colabrodo_server::{server::*, server_bufferbuilder::*, server_messages::*};
 use nalgebra_glm as glm;
 
+use crate::utility::*;
+
 pub fn make_plane(
     server_state: &mut ServerState,
     tf: glm::Mat4,
@@ -20,8 +22,6 @@ pub fn make_plane(
     const PLANE_NOR: [f32; 3] = [0.0, 1.0, 0.0];
 
     const PLANE_TEX: [[u16; 2]; 4] = [[0, 0], [0, 65535], [65535, 65535], [65535, 0]];
-
-    dbg!(tf);
 
     let verts: Vec<_> = PLANE_POS
         .iter()
@@ -590,27 +590,32 @@ pub fn make_sphere(server_state: &mut ServerState, color: glm::Vec3) -> Geometry
         .unwrap()
 }
 
-const CUBE_POS: &[[f32; 3]; 24] = &[
+const CUBE_POS: [[f32; 3]; 24] = [
     [-0.5, 0.5, -0.5],
     [0.5, 0.5, 0.5],
     [0.5, 0.5, -0.5],
     [0.5, 0.5, 0.5],
+    //
     [-0.5, -0.5, 0.5],
     [0.5, -0.5, 0.5],
     [-0.5, 0.5, 0.5],
     [-0.5, -0.5, -0.5],
+    //
     [-0.5, -0.5, 0.5],
     [0.5, -0.5, -0.5],
     [-0.5, -0.5, 0.5],
     [-0.5, -0.5, -0.5],
+    //
     [0.5, 0.5, -0.5],
     [0.5, -0.5, 0.5],
     [0.5, -0.5, -0.5],
     [-0.5, 0.5, -0.5],
+    //
     [0.5, -0.5, -0.5],
     [-0.5, -0.5, -0.5],
     [-0.5, 0.5, 0.5],
     [-0.5, 0.5, 0.5],
+    //
     [-0.5, 0.5, -0.5],
     [0.5, -0.5, 0.5],
     [0.5, 0.5, 0.5],
@@ -622,29 +627,34 @@ const CUBE_NOR: &[[f32; 3]; 24] = &[
     [-0.0, 1.0, -0.0],
     [-0.0, 1.0, -0.0],
     [-0.0, -0.0, 1.0],
+    //
     [-0.0, -0.0, 1.0],
     [-0.0, -0.0, 1.0],
     [-1.0, -0.0, -0.0],
     [-1.0, -0.0, -0.0],
+    //
     [-1.0, -0.0, -0.0],
     [-0.0, -1.0, -0.0],
     [-0.0, -1.0, -0.0],
     [-0.0, -1.0, -0.0],
+    //
     [1.0, -0.0, -0.0],
     [1.0, -0.0, -0.0],
     [1.0, -0.0, -0.0],
     [-0.0, -0.0, -1.0],
+    //
     [-0.0, -0.0, -1.0],
     [-0.0, -0.0, -1.0],
     [-0.0, 1.0, -0.0],
     [-0.0, -0.0, 1.0],
+    //
     [-1.0, -0.0, -0.0],
     [-0.0, -1.0, -0.0],
     [1.0, -0.0, -0.0],
     [-0.0, -0.0, -1.0],
 ];
 
-const CUBE_INDEX: &[[u32; 3]; 12] = &[
+const CUBE_INDEX: [[u32; 3]; 12] = [
     [0, 1, 2],
     [3, 4, 5],
     [6, 7, 8],
@@ -658,19 +668,6 @@ const CUBE_INDEX: &[[u32; 3]; 12] = &[
     [12, 22, 13],
     [15, 23, 16],
 ];
-
-fn transform_p(p: [f32; 3], tf: &glm::Mat4) -> [f32; 3] {
-    let lp: glm::Vec3 = p.into();
-    let lp = glm::vec4(lp.x, lp.y, lp.z, 1.0);
-    let lp = tf * lp;
-    (lp.xyz() / lp.w).into()
-}
-
-fn transform_n(p: [f32; 3], tf: &glm::Mat3) -> [f32; 3] {
-    let lp: glm::Vec3 = p.into();
-    let lp = (tf * lp).normalize();
-    lp.into()
-}
 
 pub fn make_cube(
     server_state: &mut ServerState,
@@ -688,7 +685,7 @@ pub fn make_cube(
         })
         .collect();
 
-    let index_list = IndexType::Triangles(CUBE_INDEX);
+    let index_list = IndexType::Triangles(&CUBE_INDEX);
 
     let test_source = VertexSource {
         name: Some("Cube".to_string()),
@@ -841,6 +838,7 @@ const CYL_POS: &[[f32; 3]; 130] = &[
     [-0.191342, -0.5, -0.46194],
 ];
 
+#[allow(clippy::approx_constant)]
 const CYL_NOR: &[[f32; 3]; 130] = &[
     [-0.0, -0.0, -1.0],
     [0.1951, -0.0, -0.9808],

@@ -43,15 +43,15 @@ where
     f32: Into<T>,
 {
     pub fn average_a(&self) -> T {
-        return (self.ea + self.sa) / 2.0.into();
+        (self.ea + self.sa) / 2.0.into()
     }
 
     pub fn average_b(&self) -> T {
-        return (self.eb + self.sb) / 2.0.into();
+        (self.eb + self.sb) / 2.0.into()
     }
 
     pub fn average_c(&self) -> T {
-        return (self.ec + self.sc) / 2.0.into();
+        (self.ec + self.sc) / 2.0.into()
     }
 }
 
