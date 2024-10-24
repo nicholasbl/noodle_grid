@@ -93,6 +93,13 @@ pub struct Floorplan {
     pub data: Vec<u8>,
 }
 
+fn sanitize_power(watts: f32) -> f32 {
+    if watts < 0.0 {
+        log::warn!("Negative power encountered!");
+    }
+    watts.abs()
+}
+
 /// A cleaned up dataset
 pub struct PowerSystem {
     // These are all states by time;
@@ -185,12 +192,12 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
                         ec: a.get_volt_c_to() / (volt_divisor as f32),
                     },
                     real_power: EndPhased {
-                        sa: a.get_real_a_from() / (watt_divisor as f32),
-                        sb: a.get_real_b_from() / (watt_divisor as f32),
-                        sc: a.get_real_c_from() / (watt_divisor as f32),
-                        ea: a.get_real_a_to() / (watt_divisor as f32),
-                        eb: a.get_real_b_to() / (watt_divisor as f32),
-                        ec: a.get_real_c_to() / (watt_divisor as f32),
+                        sa: sanitize_power(a.get_real_a_from()) / (watt_divisor as f32),
+                        sb: sanitize_power(a.get_real_b_from()) / (watt_divisor as f32),
+                        sc: sanitize_power(a.get_real_c_from()) / (watt_divisor as f32),
+                        ea: sanitize_power(a.get_real_a_to()) / (watt_divisor as f32),
+                        eb: sanitize_power(a.get_real_b_to()) / (watt_divisor as f32),
+                        ec: sanitize_power(a.get_real_c_to()) / (watt_divisor as f32),
                     },
                     reactive_power: EndPhased {
                         sa: a.get_react_a_from() / (var_divisors as f32),
