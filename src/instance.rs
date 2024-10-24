@@ -239,7 +239,7 @@ pub fn recompute_tfs<F>(
 ) where
     F: Fn(&TransformerState) -> TfGetterResult,
 {
-    //log::debug!("Recompute tfs {}", src.len());
+    log::debug!("Recompute tfs {}", src.len());
     for state in src {
         let TfGetterResult {
             volt_start,
@@ -281,14 +281,14 @@ pub fn recompute_tfs<F>(
             continue;
         }
 
-        let texture = glm::vec2(color_band, 0.85);
+        let texture = glm::vec2(color_band, 0.6);
 
         // large tube to show tf bounds
         let mat = [
-            center.x, center.y, center.z, texture.x, //
-            1.0, 1.0, 1.0, 1.0, //
+            center.x, center.y, center.z, 0.0, //
+            texture.x, texture.y, 1.0, 1.0, //
             0.0, 0.0, 0.0, 1.0, //
-            d.tube_max, height, d.tube_max, texture.y, //
+            d.tube_max, height, d.tube_max, 0.0, //
         ];
 
         dest.extend_from_slice(bytemuck::cast_slice(&mat));
