@@ -93,11 +93,17 @@ pub struct Floorplan {
     pub data: Vec<u8>,
 }
 
-fn sanitize_power(watts: f32) -> f32 {
-    if watts < 0.0 {
-        log::warn!("Negative power encountered!");
+trait CheckedAbs {
+    fn cabs(&self) -> Self;
+}
+
+impl CheckedAbs for f32 {
+    fn cabs(&self) -> Self {
+        if *self < 0.0 {
+            log::warn!("Negative value encountered!");
+        }
+        self.abs()
     }
-    watts.abs()
 }
 
 /// A cleaned up dataset
@@ -192,20 +198,20 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
                         ec: a.get_volt_c_to() / (volt_divisor as f32),
                     },
                     real_power: EndPhased {
-                        sa: sanitize_power(a.get_real_a_from()) / (watt_divisor as f32),
-                        sb: sanitize_power(a.get_real_b_from()) / (watt_divisor as f32),
-                        sc: sanitize_power(a.get_real_c_from()) / (watt_divisor as f32),
-                        ea: sanitize_power(a.get_real_a_to()) / (watt_divisor as f32),
-                        eb: sanitize_power(a.get_real_b_to()) / (watt_divisor as f32),
-                        ec: sanitize_power(a.get_real_c_to()) / (watt_divisor as f32),
+                        sa: a.get_real_a_from().cabs() / (watt_divisor as f32),
+                        sb: a.get_real_b_from().cabs() / (watt_divisor as f32),
+                        sc: a.get_real_c_from().cabs() / (watt_divisor as f32),
+                        ea: a.get_real_a_to().cabs() / (watt_divisor as f32),
+                        eb: a.get_real_b_to().cabs() / (watt_divisor as f32),
+                        ec: a.get_real_c_to().cabs() / (watt_divisor as f32),
                     },
                     reactive_power: EndPhased {
-                        sa: a.get_react_a_from() / (var_divisors as f32),
-                        sb: a.get_react_b_from() / (var_divisors as f32),
-                        sc: a.get_react_c_from() / (var_divisors as f32),
-                        ea: a.get_react_a_to() / (var_divisors as f32),
-                        eb: a.get_react_b_to() / (var_divisors as f32),
-                        ec: a.get_react_c_to() / (var_divisors as f32),
+                        sa: a.get_react_a_from().cabs() / (var_divisors as f32),
+                        sb: a.get_react_b_from().cabs() / (var_divisors as f32),
+                        sc: a.get_react_c_from().cabs() / (var_divisors as f32),
+                        ea: a.get_react_a_to().cabs() / (var_divisors as f32),
+                        eb: a.get_react_b_to().cabs() / (var_divisors as f32),
+                        ec: a.get_react_c_to().cabs() / (var_divisors as f32),
                     },
                     loc: iter.0,
                 });
@@ -319,8 +325,8 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
                         b: a.get_angle_b(),
                         c: a.get_angle_c(),
                     },
-                    real: a.get_real(),
-                    react: a.get_react(),
+                    real: a.get_real().cabs(),
+                    react: a.get_react().cabs(),
                     loc: iter.0,
                 });
             }
