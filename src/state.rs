@@ -6,12 +6,10 @@ use std::{
 use crate::{
     basemap::make_basemap,
     domain::Domain,
-    geometry::{make_bus, make_cube, make_cyl, make_sphere},
-    hazard::make_hazard_planes,
     instance::*,
     instanced_item::{
-        make_bus_element, make_generator_element, make_line_element, make_line_flow_element,
-        make_transformer_element, InstancedItem,
+        make_bus_element, make_generator_element, make_hazard_element, make_line_element,
+        make_line_flow_element, make_transformer_element, InstancedItem,
     },
     texture::{make_chevron_texture, make_hsv_texture},
     PowerSystem,
@@ -33,10 +31,9 @@ pub struct GridState {
 
     domain: Domain,
 
-    lower_hazard: Option<EntityReference>,
-    upper_hazard: Option<EntityReference>,
+    hazard: InstancedItem,
 
-    base_map: Option<EntityReference>,
+    _base_map: Option<EntityReference>,
 
     bus: InstancedItem,
     line: InstancedItem,
@@ -90,10 +87,25 @@ impl GridState {
                         texture_coord_slot: None,
                     }),
                     metallic: Some(0.0),
-                    roughness: Some(0.5),
+                    roughness: Some(0.2),
                     ..Default::default()
                 }),
                 use_alpha: Some(true),
+                ..Default::default()
+            },
+        });
+
+        // build a material for hazard blocks
+        let hazard_mat = state_lock.materials.new_component(ServerMaterialState {
+            name: None,
+            mutable: ServerMaterialStateUpdatable {
+                pbr_info: Some(ServerPBRInfo {
+                    base_color: [0.0, 0.0, 1.0, 1.0],
+                    metallic: Some(0.0),
+                    roughness: Some(1.0),
+                    ..Default::default()
+                }),
+                //use_alpha: Some(true),
                 ..Default::default()
             },
         });
@@ -103,6 +115,7 @@ impl GridState {
         let line_flow = make_line_flow_element(&mut state_lock, line_flow_mat);
         let transformer = make_transformer_element(&mut state_lock, line_mat);
         let generator = make_generator_element(&mut state_lock);
+        let hazard = make_hazard_element(&mut state_lock, hazard_mat);
 
         let ts_len = system.lines.len();
 
@@ -141,9 +154,8 @@ impl GridState {
             transformer,
             generator,
             domain,
-            lower_hazard: None,
-            upper_hazard: None,
-            base_map,
+            hazard,
+            _base_map: base_map,
             active_timer: None,
             send_back: None,
         }));
@@ -187,6 +199,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
     gstate.bus.buffer.clear();
     gstate.line.buffer.clear();
     gstate.line_flow.buffer.clear();
+    gstate.hazard.buffer.clear();
     gstate.transformer.buffer.clear();
     gstate.generator.buffer.clear();
 
@@ -228,6 +241,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         PHASE_OFFSET * 0.0,
         BAND_RED,
         &mut gstate.line.buffer,
+        &mut gstate.hazard.buffer,
     );
 
     recompute_lines(
@@ -242,6 +256,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         PHASE_OFFSET * 1.0,
         BAND_GREEN,
         &mut gstate.line.buffer,
+        &mut gstate.hazard.buffer,
     );
 
     recompute_lines(
@@ -256,6 +271,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         PHASE_OFFSET * 2.0,
         BAND_BLUE,
         &mut gstate.line.buffer,
+        &mut gstate.hazard.buffer,
     );
 
     // ===
@@ -339,6 +355,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         &gstate.bus,
         &gstate.line,
         &gstate.line_flow,
+        &gstate.hazard,
         &gstate.transformer,
         &gstate.generator,
     ] {

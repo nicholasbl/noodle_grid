@@ -145,3 +145,21 @@ pub fn make_generator_element(state: &mut ServerState) -> InstancedItem {
         buffer: vec![],
     }
 }
+
+pub fn make_hazard_element(state: &mut ServerState, material: MaterialReference) -> InstancedItem {
+    let contents = include_str!("../assets/rounded_rect.obj");
+
+    let contents = std::io::BufReader::new(std::io::Cursor::new(contents));
+
+    let (entity, geometry) = crate::import_obj::import_file(contents, state, None, Some(material))
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap();
+
+    InstancedItem {
+        entity,
+        geometry,
+        buffer: vec![],
+    }
+}

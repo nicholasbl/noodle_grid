@@ -4,6 +4,7 @@ use nalgebra_glm as glm;
 
 use crate::{domain::Domain, geometry::make_cube};
 
+#[allow(dead_code)]
 pub fn make_hazard_planes(
     state: &mut ServerState,
     domain: &Domain,

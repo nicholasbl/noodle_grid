@@ -1,6 +1,8 @@
+use std::collections::HashSet;
+
 use crate::{
     domain::{Domain, VoltageSafety},
-    utility::roll_free_rotation,
+    utility::{roll_free_rotation, LerpTrait},
     GeneratorState, LineState, TransformerState,
 };
 
@@ -88,16 +90,18 @@ pub fn recompute_buses<F>(
 }
 
 #[inline]
-fn state_to_line<F, T>(
+fn state_to_line<F, T, C>(
     state: &LineState,
     getter: &F,
     texture: T,
+    mut callback: C,
     d: &Domain,
     offset: glm::Vec3,
 ) -> Option<[f32; 16]>
 where
     F: Fn(&LineState) -> LineGetterResult,
     T: Fn(&LineGetterResult, f32) -> glm::Vec4,
+    C: FnMut(&LineGetterResult, glm::Vec3, glm::Vec3),
 {
     let result = getter(state);
     let LineGetterResult {
@@ -118,6 +122,8 @@ where
         d.voltage_to_height(volt_end),
         d.lerp_y(state.loc.ey as f32),
     ) + offset;
+
+    callback(&result, p_a, p_b);
 
     let mut v = p_b - p_a;
 
@@ -167,6 +173,72 @@ fn safety_to_saturation(v: VoltageSafety) -> f32 {
     }
 }
 
+struct HazardCheck {
+    snap: f32,
+    v_min: f32,
+    v_max: f32,
+    map_intersect: HashSet<(i32, i32, i32)>,
+}
+
+impl HazardCheck {
+    fn new(d: &Domain) -> Self {
+        // we are scaling the data to a 2 meter square. we want X cells
+
+        Self {
+            snap: 2.0 / 20.0,
+            v_min: d.voltage_to_height(0.95),
+            v_max: d.voltage_to_height(1.05),
+            map_intersect: Default::default(),
+        }
+    }
+
+    fn check(&mut self, a: glm::Vec3, b: glm::Vec3) {
+        let lmin = a.y.min(b.y);
+        let lmax = a.y.max(b.y);
+
+        if (lmin..lmax).contains(&self.v_min) {
+            let mix = self.v_min.lerp(lmin, lmax, 0.0, 1.0);
+
+            let point = glm::mix(&a, &b, mix).xz();
+
+            let point: glm::IVec2 = glm::round(&(point / self.snap)).try_cast().unwrap();
+
+            self.map_intersect.insert((point.x, point.y, 0));
+        }
+
+        if (lmin..lmax).contains(&self.v_max) {
+            let mix = self.v_max.lerp(lmin, lmax, 0.0, 1.0);
+
+            let point = glm::mix(&a, &b, mix).xz();
+
+            let point: glm::IVec2 = glm::floor(&(point / self.snap)).try_cast().unwrap();
+
+            self.map_intersect.insert((point.x, point.y, 1));
+        }
+    }
+
+    fn create_matrices(&self, dest: &mut Vec<u8>) {
+        for &(x, y, level) in &self.map_intersect {
+            let scale = glm::vec3(self.snap, 1.0, self.snap);
+
+            let point = glm::vec3(
+                x as f32 * self.snap,
+                glm::mix_scalar(self.v_min, self.v_max, level as f32),
+                y as f32 * self.snap,
+            );
+
+            let mat = [
+                point.x, point.y, point.z, 0.0, //
+                0.0, 0.0, 1.0, 1.0, //
+                0.0, 0.0, 0.0, 1.0, //
+                scale.x, scale.y, scale.z, 0.0, //
+            ];
+
+            dest.extend_from_slice(bytemuck::cast_slice(&mat));
+        }
+    }
+}
+
 pub fn recompute_lines<F>(
     src: &[LineState],
     getter: F,
@@ -174,10 +246,13 @@ pub fn recompute_lines<F>(
     offset: glm::Vec3,
     color_band: f32,
     dest: &mut Vec<u8>,
+    hazard_parts: &mut Vec<u8>,
 ) where
     F: Fn(&LineState) -> LineGetterResult,
 {
     log::debug!("Recompute line {}", src.len());
+
+    let mut checker = HazardCheck::new(d);
 
     for state in src {
         let Some(matrix) = state_to_line(
@@ -188,6 +263,9 @@ pub fn recompute_lines<F>(
 
                 return glm::vec4(color_band, safety_to_saturation(safety), 1.0, 1.0);
             },
+            |_, a, b| {
+                checker.check(a, b);
+            },
             d,
             offset,
         ) else {
@@ -196,6 +274,8 @@ pub fn recompute_lines<F>(
 
         dest.extend_from_slice(bytemuck::cast_slice(&matrix));
     }
+
+    checker.create_matrices(hazard_parts);
 }
 
 pub fn recompute_line_flows<F>(
@@ -216,6 +296,7 @@ pub fn recompute_line_flows<F>(
             |_, len| {
                 return glm::vec4(0.0, 0.0, 30.0 * len, 1.0);
             },
+            |_, _, _| {},
             domain,
             offset,
         ) else {
