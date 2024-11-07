@@ -12,6 +12,8 @@ colabrodo_common = {git = 'https://github.com/InsightCenterNoodles/colabrodo', r
 colabrodo_server = {git = 'https://github.com/InsightCenterNoodles/colabrodo', rev = "b98993c021068cb21cc0717fddb3e54d0b949b51"}
 env_logger = "0.11"
 gltf = "1"
+image = "*"
+imageproc = "*"
 local-ip-address = "0.6"
 log = "0.4"
 mdns-sd = "0.11"

@@ -8,6 +8,7 @@ mod import_obj;
 mod instance;
 mod instanced_item;
 mod power_system_capnp;
+mod ruler;
 mod state;
 mod texture;
 mod utility;

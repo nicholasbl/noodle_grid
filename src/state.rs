@@ -11,6 +11,7 @@ use crate::{
         make_bus_element, make_generator_element, make_hazard_element, make_line_element,
         make_line_flow_element, make_transformer_element, InstancedItem,
     },
+    ruler::make_ruler,
     texture::{make_chevron_texture, make_hsv_texture},
     PowerSystem,
 };
@@ -34,6 +35,8 @@ pub struct GridState {
     hazard: InstancedItem,
 
     _base_map: Option<EntityReference>,
+
+    ruler: EntityReference,
 
     bus: InstancedItem,
     line: InstancedItem,
@@ -143,6 +146,8 @@ impl GridState {
 
         let base_map = make_basemap(&mut state_lock, &system, &domain);
 
+        let ruler = make_ruler(&mut state_lock, &system, &domain);
+
         let ret = Arc::new(Mutex::new(GridState {
             state: state.clone(),
             system,
@@ -156,6 +161,7 @@ impl GridState {
             domain,
             hazard,
             _base_map: base_map,
+            ruler,
             active_timer: None,
             send_back: None,
         }));

@@ -1,2 +1,9 @@
-- Add spheres for busses
-- Move buffers around; all one for lines, all cyl for transformers
+- Voltage Scale
+- Represent line loading %. Not sure how to do this. We could:
+    - Add an ability to toggle between Voltage and LL
+    - Add an ability to toggle between coloring by phase and LL
+    - Let LL be a gradient on the phase color
+    - Or ???
+- Add the ability to probe and tooltip
+  - generate graphs on PV panels, batteries, and loads
+  - basic metadata on buses and lines

@@ -11,6 +11,9 @@ pub enum VoltageSafety {
 /// Describes how to translate voltage and power to lengths and heights
 #[derive(Debug)]
 pub struct Domain {
+    pub data_x: glm::DVec2,
+    pub data_y: glm::DVec2,
+
     pub x_bounds: glm::DVec2,
     pub y_bounds: glm::DVec2,
 
@@ -27,6 +30,8 @@ pub struct Domain {
 impl Default for Domain {
     fn default() -> Self {
         Self {
+            data_x: Default::default(),
+            data_y: Default::default(),
             x_bounds: Default::default(),
             y_bounds: Default::default(),
             volt_height_min: 0.0,
@@ -49,6 +54,8 @@ impl Domain {
         let nh = center + max_dim;
 
         Self {
+            data_x: glm::DVec2::new(bound_min.x, bound_max.x),
+            data_y: glm::DVec2::new(bound_min.y, bound_max.y),
             x_bounds: glm::DVec2::new(nl.x, nh.x),
             y_bounds: glm::DVec2::new(nl.y, nh.y),
             ..Default::default()
