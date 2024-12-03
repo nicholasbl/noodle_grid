@@ -127,9 +127,16 @@ where
 
     let mut v = p_b - p_a;
 
-    if p_a.y > p_b.y {
+    // flow by voltage gradient
+    //if p_a.y > p_b.y {
+    //    v = -v;
+    //}
+    // flow by power direction
+    if 0.0 > watt {
         v = -v;
     }
+
+    let special = watt.abs() < 50.0;
 
     let rot = roll_free_rotation(v.normalize());
 
@@ -143,7 +150,13 @@ where
         return None;
     }
 
-    let texture = texture(&result, v.magnitude());
+    let mut texture = texture(&result, v.magnitude());
+
+    if special {
+        println!("watts: {watt} {watt_size}");
+        texture.x = 0.1;
+        texture.y = 0.5;
+    }
 
     Some([
         center.x,
@@ -254,7 +267,8 @@ pub fn recompute_lines<F>(
 
     let mut checker = HazardCheck::new(d);
 
-    for state in src {
+    for (state_i, state) in src.iter().enumerate() {
+        println!("Here {state_i}");
         let Some(matrix) = state_to_line(
             state,
             &getter,
@@ -276,6 +290,56 @@ pub fn recompute_lines<F>(
     }
 
     checker.create_matrices(hazard_parts);
+}
+
+pub fn recompute_gound_lines(src: &[LineState], d: &Domain, dest: &mut Vec<u8>) {
+    log::debug!("Recompute ground line {}", src.len());
+
+    for state in src {
+        let p_a = glm::vec3(
+            d.lerp_x(state.loc.sx as f32),
+            0.0,
+            d.lerp_y(state.loc.sy as f32),
+        );
+
+        let p_b = glm::vec3(
+            d.lerp_x(state.loc.ex as f32),
+            0.0,
+            d.lerp_y(state.loc.ey as f32),
+        );
+
+        let mut v = p_b - p_a;
+
+        if p_a.y > p_b.y {
+            v = -v;
+        }
+
+        let rot = roll_free_rotation(v.normalize());
+        let rot_vec = rot.as_vector();
+
+        let center = (p_a + p_b) / 2.0;
+
+        let matrix: [f32; 16] = [
+            center.x,
+            center.y,
+            center.z,
+            0.0, // 3
+            0.1,
+            0.5,
+            1.0,
+            1.0, // 7
+            rot_vec.x,
+            rot_vec.y,
+            rot_vec.z,
+            rot_vec.w, // 11
+            0.005,
+            0.005,
+            v.magnitude(),
+            0.0, // 15
+        ];
+
+        dest.extend_from_slice(bytemuck::cast_slice(&matrix));
+    }
 }
 
 pub fn recompute_line_flows<F>(
@@ -427,7 +491,7 @@ pub fn recompute_gens<F>(
         let width = d.real_power_to_width(real.abs()) * 2.0;
         let height = d.reactive_power_to_width(react.abs()) * 2.0;
 
-        log::debug!("GEN {p_a:?} {real} {width}");
+        log::debug!("GEN {p_a:?} {real} {width} | {react} {height}");
 
         let mat = [
             p_a.x, p_a.y, p_a.z, 0.0, //

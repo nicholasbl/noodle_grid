@@ -1,6 +1,6 @@
 use std::{
     io::BufReader,
-    ops::{Add, Div},
+    ops::{Add, Div, Mul},
     path::Path,
 };
 
@@ -53,6 +53,17 @@ where
     pub fn average_c(&self) -> T {
         (self.ec + self.sc) / 2.0.into()
     }
+
+    pub fn scaled(self, scale: T) -> Self {
+        Self {
+            sa: self.sa / scale,
+            sb: self.sb / scale,
+            sc: self.sc / scale,
+            ea: self.ea / scale,
+            eb: self.eb / scale,
+            ec: self.ec / scale,
+        }
+    }
 }
 
 /// A timestep record of a line
@@ -91,19 +102,6 @@ pub struct Floorplan {
     pub ur_y: f64,
 
     pub data: Vec<u8>,
-}
-
-trait CheckedAbs {
-    fn cabs(&self) -> Self;
-}
-
-impl CheckedAbs for f32 {
-    fn cabs(&self) -> Self {
-        if *self < 0.0 {
-            log::warn!("Negative value encountered!");
-        }
-        self.abs()
-    }
 }
 
 /// A cleaned up dataset
@@ -190,29 +188,32 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
 
                 per_time_step.push(LineState {
                     voltage: EndPhased {
-                        sa: a.get_volt_a_from() / (volt_divisor as f32),
-                        sb: a.get_volt_b_from() / (volt_divisor as f32),
-                        sc: a.get_volt_c_from() / (volt_divisor as f32),
-                        ea: a.get_volt_a_to() / (volt_divisor as f32),
-                        eb: a.get_volt_b_to() / (volt_divisor as f32),
-                        ec: a.get_volt_c_to() / (volt_divisor as f32),
-                    },
+                        sa: a.get_volt_a_from(),
+                        sb: a.get_volt_b_from(),
+                        sc: a.get_volt_c_from(),
+                        ea: a.get_volt_a_to(),
+                        eb: a.get_volt_b_to(),
+                        ec: a.get_volt_c_to(),
+                    }
+                    .scaled(volt_divisor as f32),
                     real_power: EndPhased {
-                        sa: a.get_real_a_from().cabs() / (watt_divisor as f32),
-                        sb: a.get_real_b_from().cabs() / (watt_divisor as f32),
-                        sc: a.get_real_c_from().cabs() / (watt_divisor as f32),
-                        ea: a.get_real_a_to().cabs() / (watt_divisor as f32),
-                        eb: a.get_real_b_to().cabs() / (watt_divisor as f32),
-                        ec: a.get_real_c_to().cabs() / (watt_divisor as f32),
-                    },
+                        sa: a.get_real_a_from(),
+                        sb: a.get_real_b_from(),
+                        sc: a.get_real_c_from(),
+                        ea: a.get_real_a_to(),
+                        eb: a.get_real_b_to(),
+                        ec: a.get_real_c_to(),
+                    }
+                    .scaled(watt_divisor as f32),
                     reactive_power: EndPhased {
-                        sa: a.get_react_a_from().cabs() / (var_divisors as f32),
-                        sb: a.get_react_b_from().cabs() / (var_divisors as f32),
-                        sc: a.get_react_c_from().cabs() / (var_divisors as f32),
-                        ea: a.get_react_a_to().cabs() / (var_divisors as f32),
-                        eb: a.get_react_b_to().cabs() / (var_divisors as f32),
-                        ec: a.get_react_c_to().cabs() / (var_divisors as f32),
-                    },
+                        sa: a.get_react_a_from(),
+                        sb: a.get_react_b_from(),
+                        sc: a.get_react_c_from(),
+                        ea: a.get_react_a_to(),
+                        eb: a.get_react_b_to(),
+                        ec: a.get_react_c_to(),
+                    }
+                    .scaled(var_divisors as f32),
                     loc: iter.0,
                 });
             }
@@ -325,8 +326,8 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
                         b: a.get_angle_b(),
                         c: a.get_angle_c(),
                     },
-                    real: a.get_real().cabs(),
-                    react: a.get_react().cabs(),
+                    real: a.get_real(),
+                    react: a.get_react(),
                     loc: iter.0,
                 });
             }

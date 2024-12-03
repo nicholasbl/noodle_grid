@@ -418,9 +418,11 @@ fn pack_wf_state(mut obj: WFObjectState, transform: Option<glm::Mat4>) -> Vec<Pa
         })
     }
 
-    for v in &mut vert_list {
-        v.position = transform_p(v.position, &transform);
-        v.normal = transform_n(v.normal, &normal_transform)
+    for packed in &mut ret {
+        for vert in &mut packed.verts {
+            vert.position = transform_p(vert.position, &transform);
+            vert.normal = transform_n(vert.normal, &normal_transform)
+        }
     }
 
     ret

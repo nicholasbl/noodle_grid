@@ -542,14 +542,19 @@ const SPHERE_INDEX: [[u32; 3]; 320] = [
     [17, 1, 18],
 ];
 
-pub fn make_sphere(server_state: &mut ServerState, color: glm::Vec3) -> GeometryReference {
+pub fn make_sphere(
+    server_state: &mut ServerState,
+    color: glm::Vec3,
+    scale: f32,
+) -> GeometryReference {
     let verts: Vec<_> = SPHERE_POS
         .iter()
         .map(|f| {
-            let v: glm::Vec3 = (*f).into();
+            let mut v: glm::Vec3 = (*f).into();
             let n = glm::normalize(&v);
+            v *= scale;
             VertexMinimal {
-                position: *f,
+                position: v.into(),
                 normal: n.into(),
             }
         })

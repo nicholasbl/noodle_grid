@@ -25,6 +25,8 @@ pub struct Domain {
 
     pub tube_min: f32,
     pub tube_max: f32,
+
+    pub watt_bounds: f32,
 }
 
 impl Default for Domain {
@@ -40,6 +42,7 @@ impl Default for Domain {
             volt_max: 1.1,
             tube_min: 0.001,
             tube_max: 0.03,
+            watt_bounds: 1700.0,
         }
     }
 }
@@ -64,7 +67,7 @@ impl Domain {
 
     #[inline]
     pub fn voltage_to_height(&self, v: f32) -> f32 {
-        v.clamped_lerp(
+        v.abs().clamped_lerp(
             self.volt_min,
             self.volt_max,
             self.volt_height_min,
@@ -85,12 +88,14 @@ impl Domain {
 
     #[inline]
     pub fn real_power_to_width(&self, v: f32) -> f32 {
-        v.clamped_lerp(0.0, 704.0, self.tube_min, self.tube_max)
+        v.abs()
+            .clamped_lerp(0.0, self.watt_bounds, self.tube_min, self.tube_max)
     }
 
     #[inline]
     pub fn reactive_power_to_width(&self, v: f32) -> f32 {
-        v.clamped_lerp(0.0, 704.0, self.tube_min, self.tube_max)
+        v.abs()
+            .clamped_lerp(0.0, self.watt_bounds, self.tube_min, self.tube_max)
     }
 
     #[inline]

@@ -1,6 +1,6 @@
 use std::{
+    collections::VecDeque,
     sync::{Arc, Mutex},
-    time::Duration,
 };
 
 use crate::{
@@ -11,32 +11,42 @@ use crate::{
         make_bus_element, make_generator_element, make_hazard_element, make_line_element,
         make_line_flow_element, make_transformer_element, InstancedItem,
     },
+    methods::*,
+    probe::Probe,
     ruler::make_ruler,
     texture::{make_chevron_texture, make_hsv_texture},
     PowerSystem,
 };
-use colabrodo_common::components::{BufferState, TextureRef};
+
+use colabrodo_common::{
+    components::{BufferState, TextureRef},
+    nooid::EntityID,
+};
 use colabrodo_server::{server::*, server_messages::*};
 
-use nalgebra_glm as glm;
+use nalgebra_glm::{self as glm};
 
 /// To avoid overlap of phases (such as on transformers), we use a minute offset
 const PHASE_OFFSET: glm::Vec3 = glm::Vec3::new(0.001, 0.0, -0.001);
 
 pub struct GridState {
-    state: ServerStatePtr,
+    pub state: ServerStatePtr,
 
-    system: PowerSystem,
-    time_step: usize,
-    max_time_step: usize,
+    pub system: PowerSystem,
+    pub time_step: usize,
+    pub max_time_step: usize,
 
-    domain: Domain,
+    pub domain: Domain,
 
-    hazard: InstancedItem,
+    pub hazard: InstancedItem,
 
     _base_map: Option<EntityReference>,
 
     ruler: EntityReference,
+
+    pub move_func: Option<MethodReference>,
+
+    pub probes: VecDeque<Probe>,
 
     bus: InstancedItem,
     line: InstancedItem,
@@ -44,8 +54,10 @@ pub struct GridState {
     transformer: InstancedItem,
     generator: InstancedItem,
 
-    active_timer: Option<tokio::sync::oneshot::Sender<bool>>,
-    send_back: Option<tokio::sync::mpsc::Sender<bool>>,
+    pub active_timer: Option<tokio::sync::oneshot::Sender<bool>>,
+    pub send_back: Option<tokio::sync::mpsc::Sender<bool>>,
+
+    pub probe_move_request: tokio::sync::mpsc::Sender<(EntityID, [f32; 3])>,
 }
 
 pub type GridStatePtr = Arc<Mutex<GridState>>;
@@ -148,6 +160,8 @@ impl GridState {
 
         let ruler = make_ruler(&mut state_lock, &system, &domain);
 
+        let (probe_channel_tx, probe_channel_rx) = tokio::sync::mpsc::channel(24);
+
         let ret = Arc::new(Mutex::new(GridState {
             state: state.clone(),
             system,
@@ -162,19 +176,29 @@ impl GridState {
             hazard,
             _base_map: base_map,
             ruler,
+            move_func: None,
+            probes: Default::default(),
             active_timer: None,
             send_back: None,
+            probe_move_request: probe_channel_tx,
         }));
 
         {
             let (tx, rx) = tokio::sync::mpsc::channel(16);
 
-            tokio::spawn(advance_watcher(ret.clone(), rx));
+            tokio::spawn(crate::methods::advance_watcher(ret.clone(), rx));
 
             let mut lock = ret.lock().unwrap();
 
             lock.send_back = Some(tx);
         }
+
+        // {
+        //     tokio::spawn(crate::methods::probe_update_service(
+        //         ret.clone(),
+        //         probe_channel_rx,
+        //     ));
+        // }
 
         ret
     }
@@ -193,10 +217,25 @@ impl GridState {
             .methods
             .new_owned_component(create_play_time(app_state.clone()));
 
+        let create_probe = state_lock
+            .methods
+            .new_owned_component(create_create_probe(app_state.clone()));
+
         state_lock.update_document(ServerDocumentUpdate {
-            methods_list: Some(vec![comp_set_time, comp_step_time, comp_adv_time]),
+            methods_list: Some(vec![
+                comp_set_time,
+                comp_step_time,
+                comp_adv_time,
+                create_probe,
+            ]),
             signals_list: None,
-        })
+        });
+
+        let move_func = state_lock
+            .methods
+            .new_owned_component(create_set_position(app_state.clone()));
+
+        app_state.lock().unwrap().move_func = Some(move_func);
     }
 }
 
@@ -235,13 +274,14 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
 
     // ===
 
+    // Phase A
     recompute_lines(
         line_ts,
         |s| LineGetterResult {
             volt_start: s.voltage.sa,
             volt_end: s.voltage.ea,
-            watt: s.real_power.average_a().abs(),
-            vars: s.reactive_power.average_a().abs(),
+            watt: s.real_power.average_a(),
+            vars: s.reactive_power.average_a(),
         },
         &gstate.domain,
         PHASE_OFFSET * 0.0,
@@ -250,13 +290,14 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         &mut gstate.hazard.buffer,
     );
 
+    // Phase B
     recompute_lines(
         line_ts,
         |s| LineGetterResult {
             volt_start: s.voltage.sb,
             volt_end: s.voltage.eb,
-            watt: s.real_power.average_b().abs(),
-            vars: s.reactive_power.average_b().abs(),
+            watt: s.real_power.average_b(),
+            vars: s.reactive_power.average_b(),
         },
         &gstate.domain,
         PHASE_OFFSET * 1.0,
@@ -265,13 +306,14 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         &mut gstate.hazard.buffer,
     );
 
+    // Phase C
     recompute_lines(
         line_ts,
         |s| LineGetterResult {
             volt_start: s.voltage.sc,
             volt_end: s.voltage.ec,
-            watt: s.real_power.average_c().abs(),
-            vars: s.reactive_power.average_c().abs(),
+            watt: s.real_power.average_c(),
+            vars: s.reactive_power.average_c(),
         },
         &gstate.domain,
         PHASE_OFFSET * 2.0,
@@ -279,6 +321,10 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         &mut gstate.line.buffer,
         &mut gstate.hazard.buffer,
     );
+
+    // Ground Lines
+
+    recompute_gound_lines(line_ts, &gstate.domain, &mut gstate.line.buffer);
 
     // ===
 
@@ -394,111 +440,4 @@ fn update_buffers(lock: &mut ServerState, element: &InstancedItem) {
     };
 
     update.patch(&element.entity);
-}
-
-make_method_function!(set_time,
-GridState,
-"noo::set_time",
-"Set the time of the visualization",
-| time : Value : "Floating point time" |,
-{
-    let time : f32 = from_cbor(time).unwrap_or_default();
-    let time : usize = time as usize;
-    let time = time.clamp(0, app.max_time_step - 1);
-    app.time_step = time;
-    recompute_all(app, state);
-    Ok(None)
-});
-
-make_method_function!(step_time,
-GridState,
-"noo::step_time",
-"Advance the time of the visualization",
-| time : Value : "Integer step direction" |,
-{
-    let time : i32 = from_cbor(time).unwrap_or_default();
-    let time = (app.time_step as i32 + time).clamp(0, app.max_time_step as i32 - 1);
-
-    log::debug!("Stepping time: {time}");
-
-    app.time_step = time as usize;
-    recompute_all(app, state);
-
-    log::debug!("All done");
-    Ok(None)
-});
-
-async fn advance_timer(
-    send_back: tokio::sync::mpsc::Sender<bool>,
-    mut to_stop: tokio::sync::oneshot::Receiver<bool>,
-) {
-    loop {
-        log::debug!("Advancer");
-        tokio::select! {
-            _ = tokio::time::sleep(Duration::from_secs_f32(0.25)) => {
-                log::debug!("Sleep done");
-                if send_back.send(true).await.is_err() {
-                    log::debug!("closing advance timer");
-                    return
-                }
-            },
-            _ = &mut to_stop => {
-                log::debug!("closing advance timer");
-                return
-            }
-        }
-    }
-}
-
-fn check_launch_timer(gs: &mut GridState, start_timer: bool) {
-    if gs.active_timer.is_some() {
-        if start_timer {
-            // already have timer going. skip
-        } else {
-            // timer going and we want to stop. issue stop.
-            log::debug!("Issuing stop");
-            let sender = gs.active_timer.take().unwrap();
-            let _ = sender.send(true);
-        }
-    } else if start_timer {
-        // timer is not running and they want one. start;
-        log::debug!("Launching player");
-        let (os_tx, os_rx) = tokio::sync::oneshot::channel();
-
-        gs.active_timer = Some(os_tx);
-        let send_back = gs.send_back.clone().unwrap();
-
-        tokio::spawn(advance_timer(send_back, os_rx));
-    } else {
-        // timer not running and they want a stop. skip
-    }
-    log::debug!("Check launch done");
-}
-
-make_method_function!(play_time,
-GridState,
-"noo::animate_time",
-"Play the visualization",
-| time : Value : "Integer step direction" |,
-{
-    let time : i32 = from_cbor(time).unwrap_or_default();
-    let time = time.clamp(0, 1) == 1;
-
-    log::debug!("Asking to play time: {time}");
-
-    check_launch_timer(app, time);
-    Ok(None)
-});
-
-async fn advance_watcher(gs: GridStatePtr, mut rx: tokio::sync::mpsc::Receiver<bool>) {
-    while rx.recv().await.is_some() {
-        log::debug!("advancing time");
-        let mut lock = gs.lock().unwrap();
-        lock.time_step = (lock.time_step + 1) % lock.max_time_step;
-
-        let ss_arc = lock.state.clone();
-        let mut ss_lock = ss_arc.lock().unwrap();
-
-        recompute_all(&mut lock, &mut ss_lock);
-    }
 }

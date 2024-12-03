@@ -71,9 +71,9 @@ pub fn make_line_flow_element(
 ) -> InstancedItem {
     // Create geometry for the lines
 
-    let contents = include_str!("../assets/tex_cube.obj");
+    const TEX_CUBE: &str = include_str!("../assets/tex_cube.obj");
 
-    let contents = std::io::BufReader::new(std::io::Cursor::new(contents));
+    let contents = std::io::BufReader::new(std::io::Cursor::new(TEX_CUBE));
 
     let (cube_ent, cube_geom) =
         crate::import_obj::import_file(contents, state, None, Some(material))
@@ -121,7 +121,7 @@ pub fn make_transformer_element(
 
 pub fn make_generator_element(state: &mut ServerState) -> InstancedItem {
     // Create geometry for the generators
-    let geometry = make_sphere(state, glm::Vec3::new(1.0, 1.0, 0.0));
+    let geometry = make_sphere(state, glm::Vec3::new(1.0, 1.0, 0.0), 1.0);
 
     // Create an entity to render the gens
     let entity = state.entities.new_component(ServerEntityState {

@@ -1,7 +1,7 @@
 use colabrodo_common::components::{BufferState, BufferViewState, ImageSource};
 use colabrodo_server::{server::ServerState, server_messages::*};
 
-fn texture_from_bytes(state: &mut ServerState, bytes: &[u8], name: &str) -> TextureReference {
+pub fn texture_from_bytes(state: &mut ServerState, bytes: &[u8], name: &str) -> TextureReference {
     let line_image_buffer = state
         .buffers
         .new_component(BufferState::new_from_bytes(bytes.into()));

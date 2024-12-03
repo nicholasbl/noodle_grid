@@ -1,4 +1,3 @@
-- Voltage Scale
 - Represent line loading %. Not sure how to do this. We could:
     - Add an ability to toggle between Voltage and LL
     - Add an ability to toggle between coloring by phase and LL
@@ -7,3 +6,7 @@
 - Add the ability to probe and tooltip
   - generate graphs on PV panels, batteries, and loads
   - basic metadata on buses and lines
+- Color the P/Q arrows to indicate if they are travel toward/away from the feeder head
+- Would be nice to hide or other make some lines/branches transparent
+- Now that we're in a headset, it might make sense to arrange scenarios around us, instead of just switching between then like we do in the cave.
+- Also, the PV Q looks flat, I'm wondering that is a sign issue.

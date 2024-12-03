@@ -1,5 +1,6 @@
 mod arguments;
 mod basemap;
+mod chart;
 mod domain;
 mod dots;
 mod geometry;
@@ -7,7 +8,9 @@ mod hazard;
 mod import_obj;
 mod instance;
 mod instanced_item;
+mod methods;
 mod power_system_capnp;
+mod probe;
 mod ruler;
 mod state;
 mod texture;
@@ -65,19 +68,42 @@ fn mdns_publish(port: u16, name: String) -> mdns_sd::ServiceDaemon {
     let instance_name = format!("grid: {name}");
 
     if let Ok(nif) = local_ip_address::list_afinet_netifas() {
-        for (_, ip) in nif.iter().filter(|f| f.1.is_ipv4()) {
-            let ip_str = ip.to_string();
-            let host = format!("{}.local.", ip);
+        let ip_list: Vec<_> = nif
+            .iter()
+            .filter_map(|f| match f.1 {
+                std::net::IpAddr::V4(ipv4_addr) => Some(ipv4_addr),
+                _ => None,
+            })
+            .filter_map(|f| {
+                let str = f.to_string();
+                if str != "127.0.0.1" {
+                    Some(str)
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-            let srv_info =
-                mdns_sd::ServiceInfo::new(SERVICE_TYPE, &instance_name, &host, ip_str, port, None)
-                    .expect("unable to build MDNS service information");
+        let hname = hostname::get().unwrap_or_else(|_| ip_list.first().unwrap().into());
 
-            log::info!("registering MDNS SD on {}", ip);
+        let hname = hname.into_string().unwrap();
 
-            if mdns.register(srv_info).is_err() {
-                log::warn!("unable to register MDNS SD for {}", ip);
-            }
+        let host = format!("{}.local.", hname);
+
+        let srv_info = mdns_sd::ServiceInfo::new(
+            SERVICE_TYPE,
+            &instance_name,
+            &host,
+            ip_list.as_slice(),
+            port,
+            None,
+        )
+        .expect("unable to build MDNS service information");
+
+        log::info!("registering MDNS SD on {name} {ip_list:?}");
+
+        if mdns.register(srv_info).is_err() {
+            log::warn!("unable to register MDNS!");
         }
     }
 
