@@ -362,7 +362,7 @@ struct PackedObj {
 }
 
 fn pack_wf_state(mut obj: WFObjectState, transform: Option<glm::Mat4>) -> Vec<PackedObj> {
-    let transform = transform.unwrap_or_else(|| glm::Mat4::identity());
+    let transform = transform.unwrap_or_else(glm::Mat4::identity);
     let normal_transform = glm::inverse_transpose(glm::mat4_to_mat3(&transform));
 
     let mut vert_list = Vec::<VertexTexture>::new();

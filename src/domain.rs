@@ -10,6 +10,7 @@ pub enum VoltageSafety {
 
 /// Describes how to translate voltage and power to lengths and heights
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Domain {
     pub data_x: glm::DVec2,
     pub data_y: glm::DVec2,

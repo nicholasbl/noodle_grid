@@ -12,7 +12,7 @@ pub fn generate_chart_for(line_i: usize, system: &PowerSystem) -> Vec<u8> {
         .lines
         .iter()
         //.map(|l| l[line_i].voltage.average_a())
-        .map(|l| l[line_i].real_power.average_a())
+        .map(|l| l[line_i].real_power.sa)
         .collect();
 
     let minmax = match data.iter().minmax() {
@@ -23,6 +23,8 @@ pub fn generate_chart_for(line_i: usize, system: &PowerSystem) -> Vec<u8> {
     let size = (1024u32, 768u32);
     let mut buff = vec![0; (size.0 * size.1 * 3) as usize];
 
+    let name = &system.line_meta[line_i];
+
     {
         let root = BitMapBackend::with_buffer(&mut buff, size).into_drawing_area();
 
@@ -30,7 +32,7 @@ pub fn generate_chart_for(line_i: usize, system: &PowerSystem) -> Vec<u8> {
 
         let mut chart = ChartBuilder::on(&root)
             .margin(10)
-            .caption("Power", ("sans-serif", 40))
+            .caption(format!("{name}: Power"), ("sans-serif", 40))
             .set_label_area_size(LabelAreaPosition::Left, 60)
             .set_label_area_size(LabelAreaPosition::Right, 60)
             .set_label_area_size(LabelAreaPosition::Bottom, 40)

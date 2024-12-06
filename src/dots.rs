@@ -1,6 +1,6 @@
 use std::{
     io::BufReader,
-    ops::{Add, Div, Mul},
+    ops::{Add, Div},
     path::Path,
 };
 
@@ -42,18 +42,6 @@ where
     T: Add<Output = T> + Div<Output = T> + Copy,
     f32: Into<T>,
 {
-    pub fn average_a(&self) -> T {
-        (self.ea + self.sa) / 2.0.into()
-    }
-
-    pub fn average_b(&self) -> T {
-        (self.eb + self.sb) / 2.0.into()
-    }
-
-    pub fn average_c(&self) -> T {
-        (self.ec + self.sc) / 2.0.into()
-    }
-
     pub fn scaled(self, scale: T) -> Self {
         Self {
             sa: self.sa / scale,
@@ -112,6 +100,8 @@ pub struct PowerSystem {
     pub lines: Vec<Vec<LineState>>,
     pub tfs: Vec<Vec<TransformerState>>,
     pub pvs: Vec<Vec<GeneratorState>>,
+
+    pub line_meta: Vec<String>,
 
     pub floor_plan: Option<Floorplan>,
 }
@@ -338,6 +328,14 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
 
     let title = figure_name(path);
 
+    let line_meta: Vec<String> = ds
+        .get_lines()
+        .unwrap()
+        .iter()
+        .map(|f| f.get_name().ok().and_then(|r| r.to_string().ok()))
+        .map(|f| f.unwrap_or_else(|| "Unknown".into()))
+        .collect();
+
     let fp: Option<Floorplan> = if let Ok(fp) = ds.get_floorplan() {
         use crate::power_system_capnp::floor_plan::Which;
 
@@ -362,6 +360,7 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
         tfs,
         pvs,
         floor_plan: fp,
+        line_meta,
     })
 }
 

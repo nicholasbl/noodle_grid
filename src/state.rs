@@ -42,7 +42,7 @@ pub struct GridState {
 
     _base_map: Option<EntityReference>,
 
-    ruler: EntityReference,
+    _ruler: EntityReference,
 
     pub move_func: Option<MethodReference>,
 
@@ -57,7 +57,7 @@ pub struct GridState {
     pub active_timer: Option<tokio::sync::oneshot::Sender<bool>>,
     pub send_back: Option<tokio::sync::mpsc::Sender<bool>>,
 
-    pub probe_move_request: tokio::sync::mpsc::Sender<(EntityID, [f32; 3])>,
+    pub _probe_move_request: tokio::sync::mpsc::Sender<(EntityID, [f32; 3])>,
 }
 
 pub type GridStatePtr = Arc<Mutex<GridState>>;
@@ -158,9 +158,9 @@ impl GridState {
 
         let base_map = make_basemap(&mut state_lock, &system, &domain);
 
-        let ruler = make_ruler(&mut state_lock, &system, &domain);
+        let ruler = make_ruler(&mut state_lock, &domain);
 
-        let (probe_channel_tx, probe_channel_rx) = tokio::sync::mpsc::channel(24);
+        let (probe_channel_tx, _probe_channel_rx) = tokio::sync::mpsc::channel(24);
 
         let ret = Arc::new(Mutex::new(GridState {
             state: state.clone(),
@@ -175,12 +175,12 @@ impl GridState {
             domain,
             hazard,
             _base_map: base_map,
-            ruler,
+            _ruler: ruler,
             move_func: None,
             probes: Default::default(),
             active_timer: None,
             send_back: None,
-            probe_move_request: probe_channel_tx,
+            _probe_move_request: probe_channel_tx,
         }));
 
         {
@@ -263,8 +263,8 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         |s| LineGetterResult {
             volt_start: s.voltage.sa,
             volt_end: s.voltage.ea,
-            watt: s.real_power.average_a().abs(),
-            vars: s.reactive_power.average_a().abs(),
+            watt: s.real_power.sa.abs(),
+            vars: s.reactive_power.sa.abs(),
         },
         &gstate.domain,
         PHASE_OFFSET * 0.0,
@@ -280,8 +280,8 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         |s| LineGetterResult {
             volt_start: s.voltage.sa,
             volt_end: s.voltage.ea,
-            watt: s.real_power.average_a(),
-            vars: s.reactive_power.average_a(),
+            watt: s.real_power.sa,
+            vars: s.reactive_power.sa,
         },
         &gstate.domain,
         PHASE_OFFSET * 0.0,
@@ -296,8 +296,8 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         |s| LineGetterResult {
             volt_start: s.voltage.sb,
             volt_end: s.voltage.eb,
-            watt: s.real_power.average_b(),
-            vars: s.reactive_power.average_b(),
+            watt: s.real_power.sb,
+            vars: s.reactive_power.sb,
         },
         &gstate.domain,
         PHASE_OFFSET * 1.0,
@@ -312,8 +312,8 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         |s| LineGetterResult {
             volt_start: s.voltage.sc,
             volt_end: s.voltage.ec,
-            watt: s.real_power.average_c(),
-            vars: s.reactive_power.average_c(),
+            watt: s.real_power.sc,
+            vars: s.reactive_power.ec,
         },
         &gstate.domain,
         PHASE_OFFSET * 2.0,
@@ -333,8 +333,8 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         |s| LineGetterResult {
             volt_start: s.voltage.sa,
             volt_end: s.voltage.ea,
-            watt: s.real_power.average_a().abs(),
-            vars: s.reactive_power.average_a().abs(),
+            watt: s.real_power.sa.abs(),
+            vars: s.reactive_power.sa.abs(),
         },
         &gstate.domain,
         PHASE_OFFSET * 0.0,

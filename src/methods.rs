@@ -119,7 +119,8 @@ pub async fn advance_watcher(gs: GridStatePtr, mut rx: tokio::sync::mpsc::Receiv
 }
 
 fn make_probe(gs: &mut GridState, state: &mut ServerState, context: Option<InvokeIDType>) {
-    if let Some(context) = context {
+    if let Some(_context) = context {
+        // Will do some more stuff here
     } else {
         // at the moment, this is a global create probe
         // max 5

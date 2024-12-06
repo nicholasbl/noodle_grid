@@ -136,8 +136,6 @@ where
         v = -v;
     }
 
-    let special = watt.abs() < 50.0;
-
     let rot = roll_free_rotation(v.normalize());
 
     let center = (p_a + p_b) / 2.0;
@@ -150,13 +148,7 @@ where
         return None;
     }
 
-    let mut texture = texture(&result, v.magnitude());
-
-    if special {
-        println!("watts: {watt} {watt_size}");
-        texture.x = 0.1;
-        texture.y = 0.5;
-    }
+    let texture = texture(&result, v.magnitude());
 
     Some([
         center.x,
@@ -267,15 +259,14 @@ pub fn recompute_lines<F>(
 
     let mut checker = HazardCheck::new(d);
 
-    for (state_i, state) in src.iter().enumerate() {
-        println!("Here {state_i}");
+    for state in src.iter() {
         let Some(matrix) = state_to_line(
             state,
             &getter,
             |st, _len| {
                 let safety = d.voltage_safety((st.volt_start + st.volt_end) / 2.0);
 
-                return glm::vec4(color_band, safety_to_saturation(safety), 1.0, 1.0);
+                glm::vec4(color_band, safety_to_saturation(safety), 1.0, 1.0)
             },
             |_, a, b| {
                 checker.check(a, b);
@@ -357,9 +348,7 @@ pub fn recompute_line_flows<F>(
         let Some(mut matrix) = state_to_line(
             state,
             &getter,
-            |_, len| {
-                return glm::vec4(0.0, 0.0, 30.0 * len, 1.0);
-            },
+            |_, len| glm::vec4(0.0, 0.0, 30.0 * len, 1.0),
             |_, _, _| {},
             domain,
             offset,
@@ -489,7 +478,8 @@ pub fn recompute_gens<F>(
         ) + offset;
 
         let width = d.real_power_to_width(real.abs()) * 2.0;
-        let height = d.reactive_power_to_width(react.abs()) * 2.0;
+        //let height = d.reactive_power_to_width(react.abs()) * 2.0;
+        let height = width;
 
         log::debug!("GEN {p_a:?} {real} {width} | {react} {height}");
 

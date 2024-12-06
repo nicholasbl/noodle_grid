@@ -1,15 +1,10 @@
-use colabrodo_common::components::BufferState;
 use colabrodo_server::{server::*, server_messages::*};
 
-use nalgebra_glm::{self as glm, vec2, vec3, Mat4};
+use nalgebra_glm::{self as glm, vec3, Mat4};
 
-use crate::{domain::Domain, geometry::make_plane, texture::make_ruler_texture, PowerSystem};
+use crate::{domain::Domain, geometry::make_plane, texture::make_ruler_texture};
 
-pub fn make_ruler(
-    state: &mut ServerState,
-    system: &PowerSystem,
-    domain: &Domain,
-) -> EntityReference {
+pub fn make_ruler(state: &mut ServerState, domain: &Domain) -> EntityReference {
     let tex = make_ruler_texture(state);
 
     let mat = state.materials.new_component(ServerMaterialState {

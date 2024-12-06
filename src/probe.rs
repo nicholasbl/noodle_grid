@@ -1,8 +1,8 @@
 use colabrodo_common::components::*;
 use colabrodo_server::{server::*, server_messages::*};
 use nalgebra::distance;
-use nalgebra_glm::Vec3;
-use nalgebra_glm::{self as glm, Mat4};
+use nalgebra_glm::{self as glm, vec3, Mat4, Vec2};
+use nalgebra_glm::{vec2, Vec3};
 
 use crate::chart::*;
 use crate::geometry::{make_plane, make_sphere};
@@ -36,8 +36,8 @@ impl Probe {
         let geometry = make_sphere(state, glm::vec3(0.0, 0.0, 1.0), 0.05);
 
         let placement: [f32; 16] = {
-            let spot: Vec3 = self.world_pos.into();
-            let tf = glm::translation(&(spot + glm::vec3(0.0, 0.25, 0.0)));
+            let spot: Vec3 = self.world_pos;
+            let tf = glm::translation(&(spot + glm::vec3(0.25, 1.0, 0.0)));
             tf.as_slice().try_into().unwrap()
         };
 
@@ -58,10 +58,8 @@ impl Probe {
         }));
     }
 
-    fn get_closest_line(&self, gs: &mut GridState) -> Option<usize> {
-        let Some(lines) = gs.system.lines.get(gs.time_step) else {
-            return None;
-        };
+    fn get_closest_line(&self, gs: &mut GridState) -> Option<(usize, Vec2)> {
+        let lines = gs.system.lines.get(gs.time_step)?;
 
         let domain = &gs.domain;
 
@@ -69,6 +67,7 @@ impl Probe {
 
         let mut min_distance = f32::INFINITY;
         let mut index: usize = usize::MAX;
+        let mut closest_point = vec2(0.0, 0.0);
 
         for (l_i, l) in lines.iter().enumerate() {
             let a = glm::vec2(
@@ -85,26 +84,27 @@ impl Probe {
             let ab = b - a;
 
             let t = ap.dot(&ab) / ab.dot(&ab);
+            let c = a + t * ab;
 
             let this_distance = if t < 0.0 {
                 distance(&p.into(), &a.into())
             } else if t > 1.0 {
                 distance(&p.into(), &b.into())
             } else {
-                let c = a + t * ab;
                 distance(&p.into(), &c.into())
             };
 
             if this_distance < min_distance {
                 min_distance = this_distance;
                 index = l_i;
+                closest_point = c;
             }
         }
 
         if index == usize::MAX {
             None
         } else {
-            Some(index)
+            Some((index, closest_point))
         }
     }
 
@@ -175,24 +175,17 @@ impl Probe {
     pub fn update(&mut self, gs: &mut GridState, state: &mut ServerState) {
         self.dirty = false;
 
-        // move the probe
-        {
-            let tf = glm::translation(&self.world_pos.into());
-            let tf: [f32; 16] = tf.as_slice().try_into().unwrap();
-
-            let update = ServerEntityStateUpdatable {
-                transform: Some(tf),
-                ..Default::default()
-            };
-
-            update.patch(&self.entity);
-        }
-
         // find the closest line (for now)
 
-        let Some(closest_line_index) = self.get_closest_line(gs) else {
+        let Some((closest_line_index, closest_point)) = self.get_closest_line(gs) else {
+            // make sure it is at least seated to the ground
+            move_entity(&self.entity, self.world_pos);
             return;
         };
+
+        // use closest point to move our probe over
+
+        move_entity(&self.entity, vec3(closest_point.x, 0.0f32, closest_point.y));
 
         if self.line_i == closest_line_index {
             return;
@@ -202,6 +195,18 @@ impl Probe {
 
         self.install_chart(gs, state);
     }
+}
+
+fn move_entity(entity: &EntityReference, pos: Vec3) {
+    let tf = glm::translation(&pos);
+    let tf: [f32; 16] = tf.as_slice().try_into().unwrap();
+
+    let update = ServerEntityStateUpdatable {
+        transform: Some(tf),
+        ..Default::default()
+    };
+
+    update.patch(entity);
 }
 
 pub fn update_probes(gs: &mut GridState, state: &mut ServerState) {
