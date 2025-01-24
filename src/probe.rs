@@ -165,6 +165,7 @@ impl Probe {
                         instances: None,
                     },
                 )),
+                billboard: Some(true),
                 ..Default::default()
             },
         });

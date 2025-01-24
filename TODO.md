@@ -9,6 +9,6 @@
 - Color the P/Q arrows to indicate if they are travel toward/away from the feeder head
 - Would be nice to hide or other make some lines/branches transparent
 - Now that we're in a headset, it might make sense to arrange scenarios around us, instead of just switching between then like we do in the cave.
-- Also, the PV Q looks flat, I'm wondering that is a sign issue.
 - Show open switches (annotation nodes)
-- SHow line node position switches
+- Show line node position switches
+- Custom app for deployment

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     domain::{Domain, VoltageSafety},
-    utility::{roll_free_rotation, LerpTrait},
+    utility::roll_free_rotation,
     GeneratorState, LineState, TransformerState,
 };
 
@@ -180,9 +180,32 @@ fn safety_to_saturation(v: VoltageSafety) -> f32 {
 
 struct HazardCheck {
     snap: f32,
-    v_min: f32,
-    v_max: f32,
+    v_min_height: f32,
+    v_max_height: f32,
     map_intersect: HashSet<(i32, i32, i32)>,
+}
+
+fn line_plane_intersection(a: glm::Vec3, b: glm::Vec3, plane_h: f32) -> Option<glm::Vec3> {
+    let plane_normal: glm::Vec3 = glm::vec3(0.0, 1.0, 0.0);
+    let plane_point = glm::vec3(0.0, plane_h, 0.0);
+
+    let u = b - a;
+    let dot = plane_normal.dot(&u);
+
+    if dot.abs() < f32::EPSILON {
+        return None;
+    }
+
+    let w = a - plane_point;
+    let fac = -(plane_normal.dot(&w)) / dot;
+
+    if !(0.0..1.0).contains(&fac) {
+        return None;
+    }
+
+    let u = u * fac;
+
+    Some(a + u)
 }
 
 impl HazardCheck {
@@ -191,34 +214,21 @@ impl HazardCheck {
 
         Self {
             snap: 2.0 / 20.0,
-            v_min: d.voltage_to_height(0.95),
-            v_max: d.voltage_to_height(1.05),
+            v_min_height: d.voltage_to_height(0.95),
+            v_max_height: d.voltage_to_height(1.05),
             map_intersect: Default::default(),
         }
     }
 
     fn check(&mut self, a: glm::Vec3, b: glm::Vec3) {
-        let lmin = a.y.min(b.y);
-        let lmax = a.y.max(b.y);
-
-        if (lmin..lmax).contains(&self.v_min) {
-            let mix = self.v_min.lerp(lmin, lmax, 0.0, 1.0);
-
-            let point = glm::mix(&a, &b, mix).xz();
-
-            let point: glm::IVec2 = glm::round(&(point / self.snap)).try_cast().unwrap();
-
-            self.map_intersect.insert((point.x, point.y, 0));
+        if let Some(point) = line_plane_intersection(a, b, self.v_min_height) {
+            let point: glm::IVec3 = glm::round(&(point / self.snap)).try_cast().unwrap();
+            self.map_intersect.insert((point.x, point.z, 0));
         }
 
-        if (lmin..lmax).contains(&self.v_max) {
-            let mix = self.v_max.lerp(lmin, lmax, 0.0, 1.0);
-
-            let point = glm::mix(&a, &b, mix).xz();
-
-            let point: glm::IVec2 = glm::floor(&(point / self.snap)).try_cast().unwrap();
-
-            self.map_intersect.insert((point.x, point.y, 1));
+        if let Some(point) = line_plane_intersection(a, b, self.v_max_height) {
+            let point: glm::IVec3 = glm::round(&(point / self.snap)).try_cast().unwrap();
+            self.map_intersect.insert((point.x, point.z, 1));
         }
     }
 
@@ -228,7 +238,7 @@ impl HazardCheck {
 
             let point = glm::vec3(
                 x as f32 * self.snap,
-                glm::mix_scalar(self.v_min, self.v_max, level as f32),
+                glm::mix_scalar(self.v_min_height, self.v_max_height, level as f32),
                 y as f32 * self.snap,
             );
 

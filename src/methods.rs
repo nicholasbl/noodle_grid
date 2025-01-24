@@ -25,6 +25,8 @@ GridState,
     Ok(None)
 });
 
+// =============================================================================
+
 make_method_function!(step_time,
 GridState,
 "noo::step_time",
@@ -118,6 +120,8 @@ pub async fn advance_watcher(gs: GridStatePtr, mut rx: tokio::sync::mpsc::Receiv
     }
 }
 
+// =============================================================================
+
 fn make_probe(gs: &mut GridState, state: &mut ServerState, context: Option<InvokeIDType>) {
     if let Some(_context) = context {
         // Will do some more stuff here
@@ -184,6 +188,8 @@ make_method_function!(item_activate, GridState, "noo::activate", "Activate", {
     make_probe(app, state, context);
     Ok(None)
 });
+
+// =============================================================================
 
 fn on_move(
     gs: &mut GridState,
@@ -258,8 +264,12 @@ make_method_function!(set_position,
     }
 );
 
-// pub async fn probe_update_service(
-//     gs: GridStatePtr,
-//     new_request: tokio::sync::mpsc::Receiver<(EntityID, [f32; 3])>,
-// ) {
-// }
+// =============================================================================
+
+make_method_function!(
+    toggle_line_load,
+    GridState,
+    "toggle_line_load",
+    "Toggle visibility of line loading",
+    { Ok(None) }
+);

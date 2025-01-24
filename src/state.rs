@@ -115,12 +115,12 @@ impl GridState {
             name: None,
             mutable: ServerMaterialStateUpdatable {
                 pbr_info: Some(ServerPBRInfo {
-                    base_color: [0.0, 0.0, 1.0, 1.0],
+                    base_color: [0.5, 0.5, 1.0, 0.9],
                     metallic: Some(0.0),
                     roughness: Some(1.0),
                     ..Default::default()
                 }),
-                //use_alpha: Some(true),
+                use_alpha: Some(true),
                 ..Default::default()
             },
         });

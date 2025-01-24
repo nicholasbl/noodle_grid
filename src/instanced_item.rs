@@ -2,7 +2,7 @@ use colabrodo_server::{server::*, server_messages::*};
 
 use nalgebra_glm as glm;
 
-use crate::geometry::{make_bus, make_cube, make_cyl, make_sphere};
+use crate::geometry::{make_bus, make_cube, make_cyl};
 
 /// Collects relevant info for instancing geometry
 pub struct InstancedItem {
@@ -121,23 +121,30 @@ pub fn make_transformer_element(
 
 pub fn make_generator_element(state: &mut ServerState) -> InstancedItem {
     // Create geometry for the generators
-    let geometry = make_sphere(state, glm::Vec3::new(1.0, 1.0, 0.0), 1.0);
 
-    // Create an entity to render the gens
-    let entity = state.entities.new_component(ServerEntityState {
-        name: Some("Generator".to_string()),
-        mutable: ServerEntityStateUpdatable {
-            parent: None,
-            transform: None,
-            representation: Some(ServerEntityRepresentation::new_render(
-                ServerRenderRepresentation {
-                    mesh: geometry.clone(),
-                    instances: None,
-                },
-            )),
+    let contents = include_str!("../assets/generator.obj");
+
+    let contents = std::io::BufReader::new(std::io::Cursor::new(contents));
+
+    let material = state.materials.new_component(ServerMaterialState {
+        name: None,
+        mutable: ServerMaterialStateUpdatable {
+            pbr_info: Some(ServerPBRInfo {
+                base_color: [1.0, 1.0, 0.0, 1.0],
+                metallic: Some(1.0),
+                roughness: Some(0.25),
+                ..Default::default()
+            }),
+            double_sided: Some(true),
             ..Default::default()
         },
     });
+
+    let (entity, geometry) = crate::import_obj::import_file(contents, state, None, Some(material))
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap();
 
     InstancedItem {
         entity,
