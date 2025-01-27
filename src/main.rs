@@ -28,13 +28,19 @@ use dots::*;
 async fn main() {
     env_logger::init();
 
-    println!("Connect clients to port 50000");
+    let args = Arguments::parse();
 
-    let opts = ServerOptions::default();
+    let port = args.port.unwrap_or(50000u16);
+
+    let mut opts = ServerOptions::default();
+
+    opts.host.set_port(Some(port)).unwrap();
+
+    println!("Connect clients to: {}", opts.host);
 
     let state = ServerState::new();
 
-    let data = load_data();
+    let data = load_data(&args);
     let data_title = data.title.clone();
     log::info!("Loaded dataset: {data_title}");
 
@@ -54,9 +60,7 @@ async fn main() {
     mdns.shutdown().unwrap();
 }
 
-fn load_data() -> PowerSystem {
-    let args = Arguments::parse();
-
+fn load_data(args: &Arguments) -> PowerSystem {
     load_powersystem(&args.pack_path).expect("loading powersystem")
 }
 

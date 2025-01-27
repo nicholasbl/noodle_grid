@@ -8,14 +8,25 @@ use crate::PowerSystem;
 // user is dragging. update for position comes in. we process it, and send back the position update to all users including the dragger. now if the user drags and then lets go, new updates keep coming in. so we need request rejection to stop processing updates for certain probes, and only keep the last
 
 pub fn generate_chart_for(line_i: usize, system: &PowerSystem) -> Vec<u8> {
-    let data: Vec<_> = system
+    let data_power: Vec<_> = system
         .lines
         .iter()
         //.map(|l| l[line_i].voltage.average_a())
-        .map(|l| l[line_i].real_power.sa)
+        .map(|l| l[line_i].real_power.average())
         .collect();
 
-    let minmax = match data.iter().minmax() {
+    let data_voltage: Vec<_> = system
+        .lines
+        .iter()
+        .map(|l| l[line_i].voltage.average())
+        .collect();
+
+    let power_minmax = match data_power.iter().minmax() {
+        itertools::MinMaxResult::MinMax(&a, &b) => (a, b),
+        _ => (0.0, 1.0),
+    };
+
+    let voltage_minmax = match data_voltage.iter().minmax() {
         itertools::MinMaxResult::MinMax(&a, &b) => (a, b),
         _ => (0.0, 1.0),
     };
@@ -32,12 +43,13 @@ pub fn generate_chart_for(line_i: usize, system: &PowerSystem) -> Vec<u8> {
 
         let mut chart = ChartBuilder::on(&root)
             .margin(10)
-            .caption(format!("{name}: Power"), ("sans-serif", 40))
+            .caption(format!("{name}: Details"), ("sans-serif", 40))
             .set_label_area_size(LabelAreaPosition::Left, 60)
             .set_label_area_size(LabelAreaPosition::Right, 60)
             .set_label_area_size(LabelAreaPosition::Bottom, 40)
-            .build_cartesian_2d(0..data.len(), minmax.0..minmax.1)
-            .unwrap();
+            .build_cartesian_2d(0..data_power.len(), power_minmax.0..power_minmax.1)
+            .unwrap()
+            .set_secondary_coord(0..data_voltage.len(), voltage_minmax.0..voltage_minmax.1);
 
         chart
             .configure_mesh()
@@ -45,14 +57,33 @@ pub fn generate_chart_for(line_i: usize, system: &PowerSystem) -> Vec<u8> {
             .disable_y_mesh()
             .x_labels(30)
             .max_light_lines(4)
-            .y_desc("watts")
+            .y_desc("kW")
+            .draw()
+            .unwrap();
+
+        chart
+            .configure_secondary_axes()
+            .y_desc("volts")
             .draw()
             .unwrap();
 
         chart
             .draw_series(LineSeries::new(
-                data.iter().enumerate().map(|(time, &value)| (time, value)),
+                data_power
+                    .iter()
+                    .enumerate()
+                    .map(|(time, &value)| (time, value)),
                 &BLUE,
+            ))
+            .unwrap();
+
+        chart
+            .draw_secondary_series(LineSeries::new(
+                data_voltage
+                    .iter()
+                    .enumerate()
+                    .map(|(time, &value)| (time, value)),
+                &RED,
             ))
             .unwrap();
 

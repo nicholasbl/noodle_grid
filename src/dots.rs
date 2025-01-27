@@ -39,7 +39,7 @@ pub struct EndPhased<T = f32> {
 
 impl<T> EndPhased<T>
 where
-    T: Add<Output = T> + Div<Output = T> + Copy,
+    T: Add<Output = T> + Div<Output = T> + Copy + std::iter::Sum,
     f32: Into<T>,
 {
     pub fn scaled(self, scale: T) -> Self {
@@ -51,6 +51,13 @@ where
             eb: self.eb / scale,
             ec: self.ec / scale,
         }
+    }
+
+    pub fn average(&self) -> T {
+        let sum: T = [self.sa, self.sb, self.sc, self.ea, self.eb, self.ec]
+            .into_iter()
+            .sum();
+        return sum / 6.0.into();
     }
 }
 

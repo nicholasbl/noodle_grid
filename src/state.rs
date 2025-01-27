@@ -417,6 +417,8 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
 
 /// Update instances with a buffer
 fn update_buffers(lock: &mut ServerState, element: &InstancedItem) {
+    //assert!(!element.buffer.is_empty());
+
     let line_buffer = lock
         .buffers
         .new_component(BufferState::new_from_bytes(element.buffer.clone()));

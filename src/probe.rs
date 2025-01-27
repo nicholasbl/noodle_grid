@@ -141,7 +141,7 @@ impl Probe {
 
         let geometry = {
             let transform = glm::rotate_x(&Mat4::identity(), 90.0f32.to_radians());
-            let transform = glm::scale(&transform, &glm::vec3(0.4, 1.0, 0.3));
+            let transform = glm::scale(&transform, &glm::vec3(0.5, 1.0, 0.4));
             make_plane(state, transform, chart_mat)
         };
 
