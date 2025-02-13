@@ -4,8 +4,75 @@ use plotters::prelude::*;
 
 use crate::PowerSystem;
 
-//TODO: We get a stutter when people are smoothly moving things around...
-// user is dragging. update for position comes in. we process it, and send back the position update to all users including the dragger. now if the user drags and then lets go, new updates keep coming in. so we need request rejection to stop processing updates for certain probes, and only keep the last
+pub fn generate_time_chart(system: &PowerSystem, width: u32, height: u32) -> Vec<u8> {
+    let mut buff = vec![0; (width * height * 3) as usize];
+
+    {
+        let root = BitMapBackend::with_buffer(&mut buff, (width, height)).into_drawing_area();
+
+        root.fill(&WHITE).unwrap();
+
+        // lines are [time][line_i]
+
+        let line_count = system.lines.first().map(|l| l.len()).unwrap_or(1);
+        let time_count = system.lines.len();
+
+        let mut chart = ChartBuilder::on(&root)
+            .margin(10)
+            .caption(format!("{}: Details", system.title), ("sans-serif", 40))
+            .set_label_area_size(LabelAreaPosition::Left, 60)
+            .set_label_area_size(LabelAreaPosition::Right, 60)
+            .set_label_area_size(LabelAreaPosition::Bottom, 60)
+            .build_cartesian_2d(0..time_count, 0.5..1.5)
+            .unwrap();
+
+        chart
+            .configure_mesh()
+            .disable_x_mesh()
+            .disable_y_mesh()
+            .x_labels(15)
+            .max_light_lines(4)
+            .x_label_style(("arial", 24))
+            .y_label_style(("arial", 24))
+            .x_desc("Sample")
+            .y_desc("volts")
+            .draw()
+            .unwrap();
+
+        for line_i in 0..line_count {
+            let data: Vec<_> = system.lines.iter().map(|l| l[line_i].voltage.ea).collect();
+
+            chart
+                .draw_series(LineSeries::new(
+                    data.iter()
+                        .enumerate()
+                        .map(|(time, &value)| (time, value as f64)),
+                    &RGBColor(120, 120, 255),
+                ))
+                .unwrap();
+        }
+
+        root.present().unwrap();
+    }
+
+    buffer_to_png(&buff, width, height)
+}
+
+fn buffer_to_png(source: &[u8], width: u32, height: u32) -> Vec<u8> {
+    let mut png_buffer = std::io::Cursor::new(Vec::<u8>::new());
+
+    image::write_buffer_with_format(
+        &mut png_buffer,
+        source,
+        width,
+        height,
+        ExtendedColorType::Rgb8,
+        image::ImageFormat::Png,
+    )
+    .unwrap();
+
+    png_buffer.into_inner()
+}
 
 pub fn generate_chart_for(line_i: usize, system: &PowerSystem) -> Vec<u8> {
     let data_power: Vec<_> = system
@@ -15,11 +82,7 @@ pub fn generate_chart_for(line_i: usize, system: &PowerSystem) -> Vec<u8> {
         .map(|l| l[line_i].real_power.average())
         .collect();
 
-    let data_voltage: Vec<_> = system
-        .lines
-        .iter()
-        .map(|l| l[line_i].voltage.average())
-        .collect();
+    let data_voltage: Vec<_> = system.lines.iter().map(|l| l[line_i].voltage.ea).collect();
 
     let power_minmax = match data_power.iter().minmax() {
         itertools::MinMaxResult::MinMax(&a, &b) => (a, b),
@@ -90,17 +153,5 @@ pub fn generate_chart_for(line_i: usize, system: &PowerSystem) -> Vec<u8> {
         root.present().unwrap();
     }
 
-    let mut png_buffer = std::io::Cursor::new(Vec::<u8>::new());
-
-    image::write_buffer_with_format(
-        &mut png_buffer,
-        &buff,
-        size.0,
-        size.1,
-        ExtendedColorType::Rgb8,
-        image::ImageFormat::Png,
-    )
-    .unwrap();
-
-    png_buffer.into_inner()
+    buffer_to_png(&buff, size.0, size.1)
 }

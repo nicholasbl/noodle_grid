@@ -67,7 +67,10 @@ async fn advance_timer(
     }
 }
 
-fn check_launch_timer(gs: &mut GridState, start_timer: bool) {
+fn check_launch_timer(gs: &mut GridState, timer_direction: i32) {
+    let start_timer = timer_direction != 0;
+    gs.time_step_direction = timer_direction;
+
     if gs.active_timer.is_some() {
         if start_timer {
             // already have timer going. skip
@@ -99,7 +102,7 @@ GridState,
 | time : Value : "Integer step direction" |,
 {
     let time : i32 = from_cbor(time).unwrap_or_default();
-    let time = time.clamp(0, 1) == 1;
+    let time = time.clamp(-1, 1);
 
     log::debug!("Asking to play time: {time}");
 
@@ -111,10 +114,25 @@ pub async fn advance_watcher(gs: GridStatePtr, mut rx: tokio::sync::mpsc::Receiv
     while rx.recv().await.is_some() {
         log::debug!("advancing time");
         let mut lock = gs.lock().unwrap();
-        lock.time_step = (lock.time_step + 1) % lock.max_time_step;
+
+        let mut new_time =
+            (lock.time_step as i32 + lock.time_step_direction) % lock.max_time_step as i32;
+
+        // do a wrapping sub here
+        if new_time < 0 {
+            new_time += lock.max_time_step as i32
+        }
+
+        lock.time_step = new_time.try_into().unwrap();
 
         let ss_arc = lock.state.clone();
         let mut ss_lock = ss_arc.lock().unwrap();
+
+        {
+            let time_frac = lock.time_frac();
+            lock.summary.set_time_normalized(time_frac);
+            //lock.summary.set_time_normalized(0.0);
+        }
 
         recompute_all(&mut lock, &mut ss_lock);
     }
@@ -169,7 +187,7 @@ fn make_probe(gs: &mut GridState, state: &mut ServerState, context: Option<Invok
 
         gs.probes.push_back(Probe::new(ent));
 
-        update_probes(gs, state);
+        gs.probe_move_request_signal.send(true).unwrap();
     }
 }
 
@@ -197,48 +215,40 @@ fn on_move(
     context: Option<InvokeIDType>,
     position: [f32; 3],
 ) {
-    let Some(ctx) = context else {
+    // Has to be invoked on an entity
+    let Some(InvokeIDType::Entity(ctx)) = context else {
         return;
     };
 
-    let ctx = match ctx {
-        InvokeIDType::Entity(e) => e,
-        _ => {
-            return;
-        }
-    };
-
+    // And we have to know about it
     let Some(ctx) = state.entities.resolve(ctx) else {
         return;
     };
 
-    // For now...
-
-    let mut probe_changed = false;
+    // See if any of the probes have changed
 
     for item in &mut gs.probes {
         if item.entity != ctx {
             continue;
         }
 
-        item.dirty = true;
+        log::debug!("Sending move update");
+        gs.probe_move_request_signal.send(true).unwrap();
+
+        // This entity is a probe we are changing
 
         let mut new_p: Vec3 = position.into();
 
         new_p.y = 0.0;
 
-        item.world_pos = new_p;
+        item.dirty = Some(new_p);
 
-        probe_changed = true;
-    }
+        log::debug!("Done with move update");
 
-    if probe_changed {
-        update_probes(gs, state);
         return;
     }
 
-    // not a probe. just set the position they want
-
+    // Something changed, but it wasn't a probe. So we just accept it.
     let placement: [f32; 16] = {
         let spot: Vec3 = position.into();
         let tf = glm::translation(&spot);
@@ -250,7 +260,21 @@ fn on_move(
         ..Default::default()
     };
 
+    // Patch what changed
     update.patch(&ctx);
+}
+
+pub async fn probe_service(
+    gs: GridStatePtr,
+    mut check: tokio::sync::mpsc::UnboundedReceiver<bool>,
+) {
+    while let Some(_) = check.recv().await {
+        log::debug!("Getting move update");
+
+        log::debug!("Proceeding...");
+
+        update_probes(gs.clone());
+    }
 }
 
 make_method_function!(set_position,

@@ -6,9 +6,12 @@
 - Add the ability to probe and tooltip
   - generate graphs on PV panels, batteries, and loads
   - basic metadata on buses and lines
-- Color the P/Q arrows to indicate if they are travel toward/away from the feeder head
 - Would be nice to hide or other make some lines/branches transparent
-- Now that we're in a headset, it might make sense to arrange scenarios around us, instead of just switching between then like we do in the cave.
 - Show open switches (annotation nodes)
 - Show line node position switches
 - Custom app for deployment
+- Show probed-item location
+- Documentation
+- Batteries versus PV
+- Toggle reactive - real flow
+- Skybox for VP app

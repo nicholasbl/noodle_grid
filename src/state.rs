@@ -14,14 +14,12 @@ use crate::{
     methods::*,
     probe::Probe,
     ruler::make_ruler,
+    summary::SummaryItem,
     texture::{make_chevron_texture, make_hsv_texture},
     PowerSystem,
 };
 
-use colabrodo_common::{
-    components::{BufferState, TextureRef},
-    nooid::EntityID,
-};
+use colabrodo_common::components::{BufferState, TextureRef};
 use colabrodo_server::{server::*, server_messages::*};
 
 use nalgebra_glm::{self as glm};
@@ -32,8 +30,9 @@ const PHASE_OFFSET: glm::Vec3 = glm::Vec3::new(0.001, 0.0, -0.001);
 pub struct GridState {
     pub state: ServerStatePtr,
 
-    pub system: PowerSystem,
+    pub system: Arc<PowerSystem>,
     pub time_step: usize,
+    pub time_step_direction: i32,
     pub max_time_step: usize,
 
     pub domain: Domain,
@@ -43,6 +42,8 @@ pub struct GridState {
     _base_map: Option<EntityReference>,
 
     _ruler: EntityReference,
+
+    pub summary: SummaryItem,
 
     pub move_func: Option<MethodReference>,
 
@@ -57,7 +58,7 @@ pub struct GridState {
     pub active_timer: Option<tokio::sync::oneshot::Sender<bool>>,
     pub send_back: Option<tokio::sync::mpsc::Sender<bool>>,
 
-    pub _probe_move_request: tokio::sync::mpsc::Sender<(EntityID, [f32; 3])>,
+    pub probe_move_request_signal: tokio::sync::mpsc::UnboundedSender<bool>,
 }
 
 pub type GridStatePtr = Arc<Mutex<GridState>>;
@@ -160,12 +161,15 @@ impl GridState {
 
         let ruler = make_ruler(&mut state_lock, &domain);
 
-        let (probe_channel_tx, _probe_channel_rx) = tokio::sync::mpsc::channel(24);
+        let (probe_signal_tx, probe_signal_rx) = tokio::sync::mpsc::unbounded_channel::<bool>();
+
+        let summary_item = SummaryItem::new(&system, &domain, &mut state_lock);
 
         let ret = Arc::new(Mutex::new(GridState {
             state: state.clone(),
-            system,
+            system: Arc::new(system),
             time_step: (ts_len / 2).clamp(0, ts_len),
+            time_step_direction: 0,
             max_time_step: ts_len,
             bus,
             line,
@@ -176,11 +180,12 @@ impl GridState {
             hazard,
             _base_map: base_map,
             _ruler: ruler,
+            summary: summary_item,
             move_func: None,
             probes: Default::default(),
             active_timer: None,
             send_back: None,
-            _probe_move_request: probe_channel_tx,
+            probe_move_request_signal: probe_signal_tx,
         }));
 
         {
@@ -193,12 +198,9 @@ impl GridState {
             lock.send_back = Some(tx);
         }
 
-        // {
-        //     tokio::spawn(crate::methods::probe_update_service(
-        //         ret.clone(),
-        //         probe_channel_rx,
-        //     ));
-        // }
+        {
+            tokio::spawn(crate::methods::probe_service(ret.clone(), probe_signal_rx));
+        }
 
         ret
     }
@@ -235,7 +237,18 @@ impl GridState {
             .methods
             .new_owned_component(create_set_position(app_state.clone()));
 
-        app_state.lock().unwrap().move_func = Some(move_func);
+        {
+            let mut app_lock = app_state.lock().unwrap();
+            app_lock.move_func = Some(move_func);
+
+            let time_frac = app_lock.time_frac();
+
+            app_lock.summary.set_time_normalized(time_frac);
+        }
+    }
+
+    pub fn time_frac(&self) -> f32 {
+        self.time_step as f32 / self.max_time_step as f32
     }
 }
 

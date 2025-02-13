@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use colabrodo_common::components::*;
+use colabrodo_common::nooid::EntityID;
 use colabrodo_server::{server::*, server_messages::*};
 use nalgebra::distance;
 use nalgebra_glm::{self as glm, vec3, Mat4, Vec2};
@@ -6,13 +9,14 @@ use nalgebra_glm::{vec2, Vec3};
 
 use crate::chart::*;
 use crate::geometry::{make_plane, make_sphere};
+use crate::state::GridStatePtr;
 use crate::texture::texture_from_bytes;
 use crate::GridState;
 
 pub struct Probe {
     pub entity: EntityReference,
     pub world_pos: Vec3,
-    pub dirty: bool,
+    pub dirty: Option<Vec3>, // The user has asked to move this probe to this position
 
     pub handle: Option<EntityReference>,
 
@@ -25,13 +29,15 @@ impl Probe {
         Self {
             entity,
             world_pos: glm::vec3(0.0, 0.0, 0.0),
-            dirty: true,
+            dirty: None,
+            //pending_chart: None,
             handle: None,
             chart: None,
             line_i: usize::MAX,
         }
     }
 
+    /// Creates an object that the user can grab to reposition the chart
     pub fn install_handle(&mut self, gs: &mut GridState, state: &mut ServerState) {
         let geometry = make_sphere(state, glm::vec3(0.0, 0.0, 1.0), 0.05);
 
@@ -58,6 +64,7 @@ impl Probe {
         }));
     }
 
+    /// Given a list of lines, we want to find the closest one, in 2D space
     fn get_closest_line(&self, gs: &mut GridState) -> Option<(usize, Vec2)> {
         let lines = gs.system.lines.get(gs.time_step)?;
 
@@ -108,18 +115,15 @@ impl Probe {
         }
     }
 
-    fn install_chart(&mut self, gs: &mut GridState, state: &mut ServerState) {
+    /// Generate a chart, and build the graphics object for the chart display
+    fn install_chart(&mut self, gs: &mut GridState, state: &mut ServerState, new_image: Vec<u8>) {
         println!("Generating chart for {}", self.line_i);
 
-        let chart_timer = std::time::Instant::now();
+        let chart_gen_timer = std::time::Instant::now();
+        let tex = texture_from_bytes(state, &new_image, "Voltage for Line");
+        println!("Tex: {}", chart_gen_timer.elapsed().as_millis());
 
-        let chart_image = generate_chart_for(self.line_i, &gs.system);
-
-        let tex = texture_from_bytes(state, &chart_image, "Voltage for Line");
-
-        let chart_elapsed = chart_timer.elapsed();
-
-        println!("Took: {}", chart_elapsed.as_millis());
+        let chart_gen_timer = std::time::Instant::now();
 
         let chart_mat = state.materials.new_component(ServerMaterialState {
             name: Some("Chart Material".into()),
@@ -171,10 +175,15 @@ impl Probe {
         });
 
         self.chart = Some(entity);
+
+        println!("Upd: {}", chart_gen_timer.elapsed().as_millis());
     }
 
-    pub fn update(&mut self, gs: &mut GridState, state: &mut ServerState) {
-        self.dirty = false;
+    pub fn update(&mut self, gs: &mut GridState) {
+        log::debug!("Updating probe {:?}", self.dirty);
+        // new position
+        self.world_pos = self.dirty.unwrap();
+        self.dirty = None;
 
         // find the closest line (for now)
 
@@ -193,8 +202,6 @@ impl Probe {
         }
 
         self.line_i = closest_line_index;
-
-        self.install_chart(gs, state);
     }
 }
 
@@ -210,16 +217,61 @@ fn move_entity(entity: &EntityReference, pos: Vec3) {
     update.patch(entity);
 }
 
-pub fn update_probes(gs: &mut GridState, state: &mut ServerState) {
-    let mut probes = std::mem::take(&mut gs.probes);
+pub fn update_probes(gs: GridStatePtr) {
+    let chart_timer = std::time::Instant::now();
+    // we need to do this in stages to avoid blocking others from using the state. First step is to see if any probes are dirty. If they are, we want to start generating new chart images for them
 
-    for item in &mut probes {
-        if !item.dirty {
-            continue;
+    let mut image_to_generate = HashMap::<EntityID, (usize, Vec<u8>)>::default();
+
+    let power_system = {
+        // acquire locks
+        let mut gs = gs.lock().unwrap();
+
+        let mut probes = std::mem::take(&mut gs.probes);
+
+        for item in &mut probes {
+            if item.dirty.is_none() {
+                continue;
+            }
+
+            item.update(&mut gs);
+
+            image_to_generate.insert(item.entity.id(), (item.line_i, vec![]));
         }
 
-        item.update(gs, state);
+        // put probes back
+        gs.probes = std::mem::take(&mut probes);
+
+        gs.system.clone()
+    };
+
+    for item in image_to_generate.values_mut() {
+        // now generate lines
+        // let chart_gen_timer = std::time::Instant::now();
+        let chart_image = generate_chart_for(item.0, &power_system);
+        item.1 = chart_image;
+        // println!("Gen: {}", chart_gen_timer.elapsed().as_millis());
     }
 
-    gs.probes = std::mem::take(&mut probes);
+    {
+        let mut gs = gs.lock().unwrap();
+        let state_ptr = gs.state.clone();
+        let mut state = state_ptr.lock().unwrap();
+
+        let mut probes = std::mem::take(&mut gs.probes);
+
+        for item in &mut probes {
+            let Some((_, content)) = image_to_generate.remove(&item.entity.id()) else {
+                continue;
+            };
+
+            item.install_chart(&mut gs, &mut state, content);
+        }
+
+        // put probes back
+        gs.probes = std::mem::take(&mut probes);
+    }
+
+    let since = chart_timer.elapsed();
+    println!("Took: {}", since.as_millis());
 }

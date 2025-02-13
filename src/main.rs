@@ -13,6 +13,7 @@ mod power_system_capnp;
 mod probe;
 mod ruler;
 mod state;
+mod summary;
 mod texture;
 mod utility;
 
