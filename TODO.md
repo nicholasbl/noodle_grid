@@ -15,3 +15,4 @@
 - Batteries versus PV
 - Toggle reactive - real flow
 - Skybox for VP app
+- Remove probes. Possible two charts per probe?

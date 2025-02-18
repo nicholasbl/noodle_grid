@@ -49,3 +49,88 @@ pub fn make_ruler(state: &mut ServerState, domain: &Domain) -> EntityReference {
         },
     })
 }
+
+#[allow(dead_code)]
+pub struct VerticalAxisSelector {
+    indicator: EntityReference,
+    voltage: EntityReference,
+    line_load: EntityReference,
+}
+
+impl VerticalAxisSelector {
+    pub fn new(state: &mut ServerState) -> Self {
+        let indicator_source = include_str!("../assets/selection_indicator.obj");
+
+        let indicator = make_obj(
+            state,
+            "Indicator",
+            [0.5, 0.5, 0.5, 1.0],
+            glm::vec3(0.5, 0.5, 0.5),
+            glm::vec3(0.5, 0.0, 0.0),
+            indicator_source,
+        );
+
+        let voltage_source = include_str!("../assets/selection_indicator.obj");
+
+        let voltage = make_obj(
+            state,
+            "Indicator",
+            [0.5, 0.5, 0.5, 1.0],
+            glm::vec3(0.5, 0.5, 0.5),
+            glm::vec3(0.5, 0.0, 0.0),
+            voltage_source,
+        );
+
+        let line_load_source = include_str!("../assets/selection_indicator.obj");
+
+        let line_load = make_obj(
+            state,
+            "Indicator",
+            [0.5, 0.5, 0.5, 1.0],
+            glm::vec3(0.5, 0.5, 0.5),
+            glm::vec3(0.5, 0.0, 0.0),
+            line_load_source,
+        );
+
+        Self {
+            indicator,
+            voltage,
+            line_load,
+        }
+    }
+}
+
+fn make_obj(
+    state: &mut ServerState,
+    name: &str,
+    color: [f32; 4],
+    scale: glm::Vec3,
+    offset: glm::Vec3,
+    content: &str,
+) -> EntityReference {
+    let contents = std::io::BufReader::new(std::io::Cursor::new(content));
+
+    let material = state.materials.new_component(ServerMaterialState {
+        name: Some(format!("{name} Mat")),
+        mutable: ServerMaterialStateUpdatable {
+            pbr_info: Some(ServerPBRInfo {
+                base_color: color,
+                metallic: Some(0.0),
+                roughness: Some(1.0),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+    });
+
+    let tf = glm::translation(&offset);
+    let scale = glm::scale(&tf, &scale);
+
+    let (entity, _) = crate::import_obj::import_file(contents, state, Some(scale), Some(material))
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap();
+
+    entity
+}

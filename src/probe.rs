@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use colabrodo_common::components::*;
 use colabrodo_common::nooid::EntityID;
-use colabrodo_server::{server::*, server_messages::*};
+use colabrodo_server::{
+    server::{self, *},
+    server_messages::*,
+};
 use nalgebra::distance;
 use nalgebra_glm::{self as glm, vec3, Mat4, Vec2};
 use nalgebra_glm::{vec2, Vec3};
@@ -21,6 +24,7 @@ pub struct Probe {
     pub handle: Option<EntityReference>,
 
     pub chart: Option<EntityReference>,
+    pub chart_delete: Option<EntityReference>,
     pub line_i: usize,
 }
 
@@ -33,6 +37,7 @@ impl Probe {
             //pending_chart: None,
             handle: None,
             chart: None,
+            chart_delete: None,
             line_i: usize::MAX,
         }
     }
@@ -48,7 +53,7 @@ impl Probe {
         };
 
         self.handle = Some(state.entities.new_component(ServerEntityState {
-            name: Some("Transformers".to_string()),
+            name: Some("Chart Handle".to_string()),
             mutable: ServerEntityStateUpdatable {
                 parent: None,
                 transform: Some(placement),
@@ -117,13 +122,11 @@ impl Probe {
 
     /// Generate a chart, and build the graphics object for the chart display
     fn install_chart(&mut self, gs: &mut GridState, state: &mut ServerState, new_image: Vec<u8>) {
-        println!("Generating chart for {}", self.line_i);
+        log::debug!("Generating chart for {}", self.line_i);
 
         let chart_gen_timer = std::time::Instant::now();
         let tex = texture_from_bytes(state, &new_image, "Voltage for Line");
-        println!("Tex: {}", chart_gen_timer.elapsed().as_millis());
-
-        let chart_gen_timer = std::time::Instant::now();
+        log::debug!("Tex: {}", chart_gen_timer.elapsed().as_millis());
 
         let chart_mat = state.materials.new_component(ServerMaterialState {
             name: Some("Chart Material".into()),
@@ -159,7 +162,7 @@ impl Probe {
         }
 
         let entity = state.entities.new_component(ServerEntityState {
-            name: Some("Chart Entity".to_string()),
+            name: Some(format!("Chart for {}", self.line_i)),
             mutable: ServerEntityStateUpdatable {
                 parent: Some(self.handle.clone().unwrap()),
                 transform: Some(placement),
@@ -176,7 +179,35 @@ impl Probe {
 
         self.chart = Some(entity);
 
-        println!("Upd: {}", chart_gen_timer.elapsed().as_millis());
+        // now install the delete button
+        self.install_delete_buttion(gs, state);
+    }
+
+    fn install_delete_buttion(&mut self, gs: &mut GridState, state: &mut ServerState) {
+        let geometry = make_sphere(state, glm::vec3(1.0, 0.1, 0.1), 0.05);
+
+        let placement: [f32; 16] = {
+            let tf = glm::translation(&glm::vec3(0.25, 0.25, 0.0));
+            tf.as_slice().try_into().unwrap()
+        };
+
+        let entity = state.entities.new_component(ServerEntityState {
+            name: Some("Delete Button".to_string()),
+            mutable: ServerEntityStateUpdatable {
+                parent: Some(self.chart.clone().unwrap()),
+                transform: Some(placement),
+                representation: Some(ServerEntityRepresentation::new_render(
+                    ServerRenderRepresentation {
+                        mesh: geometry,
+                        instances: None,
+                    },
+                )),
+                methods_list: Some(vec![gs.activate_func.clone().unwrap()]),
+                ..Default::default()
+            },
+        });
+
+        self.chart_delete = Some(entity);
     }
 
     pub fn update(&mut self, gs: &mut GridState) {
@@ -203,6 +234,14 @@ impl Probe {
 
         self.line_i = closest_line_index;
     }
+
+    pub fn check_click(&self, entity: &EntityReference) -> Option<ClickResult> {
+        todo!()
+    }
+}
+
+pub enum ClickResult {
+    Delete,
 }
 
 fn move_entity(entity: &EntityReference, pos: Vec3) {

@@ -8,6 +8,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::probe::update_probes;
+use crate::probe::ClickResult;
 use crate::probe::Probe;
 use crate::state::*;
 
@@ -296,4 +297,39 @@ make_method_function!(
     "toggle_line_load",
     "Toggle visibility of line loading",
     { Ok(None) }
+);
+
+// =============================================================================
+
+fn on_click(
+    gs: &mut GridState,
+    state: &mut ServerState,
+    context: Option<InvokeIDType>,
+    _ty: ciborium::Value,
+) {
+    // Has to be invoked on an entity
+    let Some(InvokeIDType::Entity(ctx)) = context else {
+        return;
+    };
+
+    // And we have to know about it
+    let Some(ctx) = state.entities.resolve(ctx) else {
+        return;
+    };
+
+    gs.probes.retain_mut(|f| match f.check_click(&ctx) {
+        Some(ClickResult::Delete) => false,
+        _ => true,
+    });
+}
+
+make_method_function!(activate,
+    GridState,
+    strings::MTHD_ACTIVATE,
+    "Activate an entity",
+    |kind : ciborium::Value : "Activation context"|,
+    {
+        on_click(app, state, context, kind);
+        Ok(None)
+    }
 );

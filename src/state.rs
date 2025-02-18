@@ -13,7 +13,7 @@ use crate::{
     },
     methods::*,
     probe::Probe,
-    ruler::make_ruler,
+    ruler::{make_ruler, VerticalAxisSelector},
     summary::SummaryItem,
     texture::{make_chevron_texture, make_hsv_texture},
     PowerSystem,
@@ -43,9 +43,11 @@ pub struct GridState {
 
     _ruler: EntityReference,
 
+    //pub axis_selector: VerticalAxisSelector,
     pub summary: SummaryItem,
 
     pub move_func: Option<MethodReference>,
+    pub activate_func: Option<MethodReference>,
 
     pub probes: VecDeque<Probe>,
 
@@ -165,6 +167,8 @@ impl GridState {
 
         let summary_item = SummaryItem::new(&system, &domain, &mut state_lock);
 
+        //let v_axis_selector = VerticalAxisSelector::new(&mut state_lock);
+
         let ret = Arc::new(Mutex::new(GridState {
             state: state.clone(),
             system: Arc::new(system),
@@ -182,10 +186,12 @@ impl GridState {
             _ruler: ruler,
             summary: summary_item,
             move_func: None,
+            activate_func: None,
             probes: Default::default(),
             active_timer: None,
             send_back: None,
             probe_move_request_signal: probe_signal_tx,
+            //axis_selector: v_axis_selector,
         }));
 
         {
@@ -223,6 +229,10 @@ impl GridState {
             .methods
             .new_owned_component(create_create_probe(app_state.clone()));
 
+        let create_activate = state_lock
+            .methods
+            .new_owned_component(create_activate(app_state.clone()));
+
         state_lock.update_document(ServerDocumentUpdate {
             methods_list: Some(vec![
                 comp_set_time,
@@ -240,6 +250,7 @@ impl GridState {
         {
             let mut app_lock = app_state.lock().unwrap();
             app_lock.move_func = Some(move_func);
+            app_lock.activate_func = Some(create_activate);
 
             let time_frac = app_lock.time_frac();
 
