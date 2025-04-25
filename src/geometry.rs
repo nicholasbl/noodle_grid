@@ -5,12 +5,18 @@ use nalgebra_glm as glm;
 
 use crate::utility::*;
 
+/// Builds a simple flat plane geometry.
+///
+/// The plane is centered at the origin in XZ space, facing up along +Y.
+/// Transforms are applied to position it properly.
 pub fn make_plane(
     server_state: &mut ServerState,
     tf: glm::Mat4,
     material: MaterialReference,
 ) -> GeometryReference {
     let normal_tf = glm::inverse_transpose(glm::mat4_to_mat3(&tf));
+
+    // Compute the correct transformation matrix for normals (handle non-uniform scaling)
 
     const PLANE_POS: [[f32; 3]; 4] = [
         [-0.5, 0.0, -0.5],
@@ -23,6 +29,8 @@ pub fn make_plane(
 
     const PLANE_TEX: [[u16; 2]; 4] = [[0, 0], [0, 65535], [65535, 65535], [65535, 0]];
 
+    // Build vertex list by transforming each position and normal
+    // Assign a basic UV texture coordinate to each vertex
     let verts: Vec<_> = PLANE_POS
         .iter()
         .zip(repeat(PLANE_NOR))
@@ -34,6 +42,7 @@ pub fn make_plane(
         })
         .collect();
 
+    // Simple quad split into two triangles
     let index_list = IndexType::Triangles(&[[0, 1, 2], [0, 2, 3]]);
 
     let test_source = VertexSource {
@@ -542,11 +551,18 @@ const SPHERE_INDEX: [[u32; 3]; 320] = [
     [17, 1, 18],
 ];
 
+/// Builds a simple icosphere approximation.
+///
+/// Creates a normalized sphere mesh, scaled by `scale` and colored with a basic material.
 pub fn make_sphere(
     server_state: &mut ServerState,
     color: glm::Vec3,
     scale: f32,
 ) -> GeometryReference {
+    // Normalize each vertex to unit length to get a true sphere,
+    // then scale by user-provided scale factor.
+    // Normals are kept unit-length for proper lighting.
+
     let verts: Vec<_> = SPHERE_POS
         .iter()
         .map(|f| {
@@ -674,13 +690,19 @@ const CUBE_INDEX: [[u32; 3]; 12] = [
     [15, 23, 16],
 ];
 
+/// Builds a basic cube geometry, with normals per face.
+///
+/// Applies a transform for world positioning and orientation.
 pub fn make_cube(
     server_state: &mut ServerState,
     tf: glm::Mat4,
     material: MaterialReference,
 ) -> GeometryReference {
+    // Compute normal matrix from transform
     let normal_tf = glm::inverse_transpose(glm::mat4_to_mat3(&tf));
 
+    // Each face of the cube has duplicated vertices (not shared), allowing
+    // correct flat shading with distinct normals per face.
     let verts: Vec<_> = CUBE_POS
         .iter()
         .zip(CUBE_NOR)
@@ -1104,13 +1126,20 @@ const CYL_INDEX: &[[u32; 3]; 124] = &[
     [70, 108, 68],
 ];
 
+/// Builds a cylinder geometry with flat top and bottom caps.
+///
+/// Positions and normals are hardcoded for speed.
+/// Transforms are applied to position/scale it properly.
 pub fn make_cyl(
     server_state: &mut ServerState,
     tf: glm::Mat4,
     material: MaterialReference,
 ) -> GeometryReference {
+    // As before, compute normal matrix separately
     let normal_tf = glm::inverse_transpose(glm::mat4_to_mat3(&tf));
 
+    // Build vertex buffer: each cylinder side uses radial interpolation
+    // Normals point outward from center (for smooth lighting)
     let verts: Vec<_> = CYL_POS
         .iter()
         .zip(CYL_NOR)
@@ -1477,6 +1506,10 @@ const BUS_INDEX: &[[u32; 3]; 162] = &[
     [12, 13, 16],
 ];
 
+/// Builds a 'bus' geometry with rounded tops and bottoms.
+///
+/// Positions and normals are hardcoded for speed.
+/// Transforms are applied to position/scale it properly.
 pub fn make_bus(
     server_state: &mut ServerState,
     tf: glm::Mat4,

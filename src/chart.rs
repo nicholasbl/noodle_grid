@@ -4,10 +4,21 @@ use plotters::prelude::*;
 
 use crate::PowerSystem;
 
+/// Generates an overview time chart showing voltages over time for all lines.
+///
+/// # Arguments
+/// * `system` - Reference to the loaded `PowerSystem`
+/// * `width` - Width of the generated image in pixels
+/// * `height` - Height of the generated image in pixels
+///
+/// # Returns
+/// * A PNG image as a byte vector
 pub fn generate_time_chart(system: &PowerSystem, width: u32, height: u32) -> Vec<u8> {
+    // Pre-allocate RGB buffer (3 bytes per pixel)
     let mut buff = vec![0; (width * height * 3) as usize];
 
     {
+        // Create the root drawing area
         let root = BitMapBackend::with_buffer(&mut buff, (width, height)).into_drawing_area();
 
         root.fill(&WHITE).unwrap();
@@ -17,6 +28,7 @@ pub fn generate_time_chart(system: &PowerSystem, width: u32, height: u32) -> Vec
         let line_count = system.lines.first().map(|l| l.len()).unwrap_or(1);
         let time_count = system.lines.len();
 
+        // Set up the chart with margin and labels
         let mut chart = ChartBuilder::on(&root)
             .margin(10)
             .caption(format!("{}: Details", system.title), ("sans-serif", 40))
@@ -39,6 +51,7 @@ pub fn generate_time_chart(system: &PowerSystem, width: u32, height: u32) -> Vec
             .draw()
             .unwrap();
 
+        // Plot each line's voltage trace over time
         for line_i in 0..line_count {
             let data: Vec<_> = system.lines.iter().map(|l| l[line_i].voltage.ea).collect();
 
@@ -58,6 +71,15 @@ pub fn generate_time_chart(system: &PowerSystem, width: u32, height: u32) -> Vec
     buffer_to_png(&buff, width, height)
 }
 
+/// Converts an in-memory RGB buffer into a PNG image.
+///
+/// # Arguments
+/// * `source` - Raw RGB byte buffer
+/// * `width` - Image width
+/// * `height` - Image height
+///
+/// # Returns
+/// * PNG file contents as a byte vector
 fn buffer_to_png(source: &[u8], width: u32, height: u32) -> Vec<u8> {
     let mut png_buffer = std::io::Cursor::new(Vec::<u8>::new());
 
@@ -74,7 +96,18 @@ fn buffer_to_png(source: &[u8], width: u32, height: u32) -> Vec<u8> {
     png_buffer.into_inner()
 }
 
+/// Generates a detailed chart for a specific line, showing real power and voltage over time.
+///
+/// The left Y axis plots real power (kW), while the right Y axis plots voltage (V).
+///
+/// # Arguments
+/// * `line_i` - Index of the line to chart
+/// * `system` - Reference to the loaded `PowerSystem`
+///
+/// # Returns
+/// * A PNG image as a byte vector
 pub fn generate_chart_for(line_i: usize, system: &PowerSystem) -> Vec<u8> {
+    // Extract real power and voltage data for the selected line
     let data_power: Vec<_> = system
         .lines
         .iter()
@@ -84,6 +117,7 @@ pub fn generate_chart_for(line_i: usize, system: &PowerSystem) -> Vec<u8> {
 
     let data_voltage: Vec<_> = system.lines.iter().map(|l| l[line_i].voltage.ea).collect();
 
+    // Calculate min and max for scaling axes
     let power_minmax = match data_power.iter().minmax() {
         itertools::MinMaxResult::MinMax(&a, &b) => (a, b),
         _ => (0.0, 1.0),
@@ -114,6 +148,7 @@ pub fn generate_chart_for(line_i: usize, system: &PowerSystem) -> Vec<u8> {
             .unwrap()
             .set_secondary_coord(0..data_voltage.len(), voltage_minmax.0..voltage_minmax.1);
 
+        // Draw primary (power) axis and series
         chart
             .configure_mesh()
             .disable_x_mesh()
@@ -124,6 +159,7 @@ pub fn generate_chart_for(line_i: usize, system: &PowerSystem) -> Vec<u8> {
             .draw()
             .unwrap();
 
+        // Draw secondary (voltage) axis and series
         chart
             .configure_secondary_axes()
             .y_desc("volts")

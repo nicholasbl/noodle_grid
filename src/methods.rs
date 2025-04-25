@@ -18,6 +18,9 @@ GridState,
 "Set the time of the visualization",
 | time : Value : "Floating point time" |,
 {
+    //! Sets the current time step based on a floating-point input.
+    //!
+    //! Clamps the input to valid range and triggers recomputation.
     let time : f32 = from_cbor(time).unwrap_or_default();
     let time : usize = time as usize;
     let time = time.clamp(0, app.max_time_step - 1);
@@ -34,6 +37,10 @@ GridState,
 "Advance the time of the visualization",
 | time : Value : "Integer step direction" |,
 {
+    //! Steps the current time step by a signed integer amount.
+    //!
+    //! Used for manual time navigation forward/backward.
+
     let time : i32 = from_cbor(time).unwrap_or_default();
     let time = (app.time_step as i32 + time).clamp(0, app.max_time_step as i32 - 1);
 
@@ -46,6 +53,9 @@ GridState,
     Ok(None)
 });
 
+/// Periodically signals a timer channel until cancelled.
+///
+/// Runs in a background task to drive automatic time advancement.
 async fn advance_timer(
     send_back: tokio::sync::mpsc::Sender<bool>,
     mut to_stop: tokio::sync::oneshot::Receiver<bool>,
@@ -68,6 +78,9 @@ async fn advance_timer(
     }
 }
 
+/// Starts or stops the playback timer based on the requested direction.
+///
+/// Manages an internal oneshot channel to control the timer lifecycle.
 fn check_launch_timer(gs: &mut GridState, timer_direction: i32) {
     let start_timer = timer_direction != 0;
     gs.time_step_direction = timer_direction;
@@ -102,6 +115,10 @@ GridState,
 "Play the visualization",
 | time : Value : "Integer step direction" |,
 {
+    //! Starts or stops automatic time playback based on a step direction.
+    //!
+    //! -1: reverse, 0: stop, 1: forward
+
     let time : i32 = from_cbor(time).unwrap_or_default();
     let time = time.clamp(-1, 1);
 
@@ -111,6 +128,9 @@ GridState,
     Ok(None)
 });
 
+/// Watches for timer signals and advances the visualization time step.
+///
+/// Recomputes the entire scene each time the step updates.
 pub async fn advance_watcher(gs: GridStatePtr, mut rx: tokio::sync::mpsc::Receiver<bool>) {
     while rx.recv().await.is_some() {
         log::debug!("advancing time");
@@ -141,12 +161,14 @@ pub async fn advance_watcher(gs: GridStatePtr, mut rx: tokio::sync::mpsc::Receiv
 
 // =============================================================================
 
+/// Creates a new probe entity in the scene (if under probe limit).
+///
+/// Probes are lightweight movable entities users can interact with.
 fn make_probe(gs: &mut GridState, state: &mut ServerState, context: Option<InvokeIDType>) {
     if let Some(_context) = context {
         // Will do some more stuff here
     } else {
-        // at the moment, this is a global create probe
-        // max 5
+        // Limit the number of probes to 5 by recycling oldest
         if gs.probes.len() >= 5 {
             gs.probes.pop_front();
         }
@@ -168,6 +190,7 @@ fn make_probe(gs: &mut GridState, state: &mut ServerState, context: Option<Invok
             },
         });
 
+        // Import probe mesh from embedded OBJ asset
         let (ent, _) = crate::import_obj::import_file(
             contents,
             state,
@@ -199,18 +222,29 @@ make_method_function!(
     "Create Probe",
     "Add a probe to the visualization",
     {
+        //! User-invoked method to create a new probe.
         make_probe(app, state, None);
         Ok(None)
     }
 );
 
-make_method_function!(item_activate, GridState, "noo::activate", "Activate", {
-    make_probe(app, state, context);
-    Ok(None)
-});
+make_method_function!(
+    item_activate,
+    GridState,
+    "noo::activate",
+    "Activate",
+    {
+        //! Handles activation of an item, which can trigger probe creation.
+        make_probe(app, state, context);
+        Ok(None)
+    }
+);
 
 // =============================================================================
 
+/// Moves an entity or probe to a new position based on a remote input.
+///
+/// If the entity is a known probe, updates internal tracking.
 fn on_move(
     gs: &mut GridState,
     state: &mut ServerState,
@@ -228,8 +262,8 @@ fn on_move(
     };
 
     // See if any of the probes have changed
-
     for item in &mut gs.probes {
+        // Check if the moved entity matches a probe
         if item.entity != ctx {
             continue;
         }
@@ -250,7 +284,7 @@ fn on_move(
         return;
     }
 
-    // Something changed, but it wasn't a probe. So we just accept it.
+    // Otherwise treat as a generic move and update transform directly
     let placement: [f32; 16] = {
         let spot: Vec3 = position.into();
         let tf = glm::translation(&spot);
@@ -266,6 +300,9 @@ fn on_move(
     update.patch(&ctx);
 }
 
+/// Background task that watches for probe movement signals.
+///
+/// When triggered, updates probe transforms accordingly.
 pub async fn probe_service(
     gs: GridStatePtr,
     mut check: tokio::sync::mpsc::UnboundedReceiver<bool>,
@@ -285,6 +322,7 @@ make_method_function!(set_position,
     "Set the position of an entity.",
     |position : [f32;3] : "New position of entity, as vec3"|,
     {
+        //! Method to update an entity's world position.
         on_move(app, state, context, position);
         Ok(None)
     }
@@ -298,6 +336,8 @@ make_method_function!(
     "Toggle Line Load",
     "Toggle visibility of line loading",
     {
+        //! Toggles between normal line coloring and line load visualization.
+
         app.show_line_load = !app.show_line_load;
         recompute_all(app, state);
         Ok(None)
@@ -306,6 +346,9 @@ make_method_function!(
 
 // =============================================================================
 
+/// Handles click events on entities, possibly deleting a probe.
+///
+/// A click can trigger a probe "check_click" event to self-remove.
 fn on_click(
     gs: &mut GridState,
     state: &mut ServerState,
@@ -332,6 +375,8 @@ make_method_function!(activate,
     "Activate an entity",
     | kind : Option<ciborium::Value> : "Activation context"|,
     {
+        //! Invokes an activation action on an entity (usually a probe or hazard).
+
         on_click(app, state, context, kind);
         Ok(None)
     }

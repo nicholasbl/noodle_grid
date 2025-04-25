@@ -27,9 +27,14 @@ use colabrodo_server::{server::*, server_messages::*};
 
 use nalgebra_glm::{self as glm};
 
-/// To avoid overlap of phases (such as on transformers), we use a minute offset
+/// Small offset used to visually separate phases (A/B/C) in space.
+///
+/// Prevents overlapping geometry like lines and transformers.
 const PHASE_OFFSET: glm::Vec3 = glm::Vec3::new(0.001, 0.0, -0.001);
 
+/// Core application state used for visualization logic and render management.
+///
+/// Holds all system data, instance containers, control signals, and configuration state.
 pub struct GridState {
     pub state: ServerStatePtr,
 
@@ -72,13 +77,16 @@ pub struct GridState {
 pub type GridStatePtr = Arc<Mutex<GridState>>;
 
 impl GridState {
+    /// Initializes a new GridState with geometry, materials, and system configuration.
+    ///
+    /// Sets up all buffers, entities, materials, rulers, and spawns background tasks.
     pub fn new(state: ServerStatePtr, system: PowerSystem) -> GridStatePtr {
         let mut state_lock = state.lock().unwrap();
 
-        // load color texture for instances
+        // Load texture and build material for color-mapped lines
         let texture = make_hsv_texture(&mut state_lock);
 
-        // build a material for lines
+        // Build a material for lines
         let line_mat = state_lock.materials.new_component(ServerMaterialState {
             name: Some("Line Material".into()),
             mutable: ServerMaterialStateUpdatable {
@@ -97,9 +105,10 @@ impl GridState {
             },
         });
 
+        // Load texture and material for animated flow lines
         let flow_texture = make_chevron_texture(&mut state_lock);
 
-        // build a material for line flow
+        // Build a material for line flow
         let line_flow_mat = state_lock.materials.new_component(ServerMaterialState {
             name: Some("Line Flow Material".into()),
             mutable: ServerMaterialStateUpdatable {
@@ -124,7 +133,7 @@ impl GridState {
             name: None,
             mutable: ServerMaterialStateUpdatable {
                 pbr_info: Some(ServerPBRInfo {
-                    base_color: [0.5, 0.5, 1.0, 0.9],
+                    base_color: [0.75, 0.75, 1.0, 0.9],
                     metallic: Some(0.0),
                     roughness: Some(1.0),
                     ..Default::default()
@@ -134,6 +143,7 @@ impl GridState {
             },
         });
 
+        // Create empty instanced geometry containers
         let bus = make_bus_element(&mut state_lock, line_mat.clone());
         let line = make_line_element(&mut state_lock, line_mat.clone());
         let line_flow = make_line_flow_element(&mut state_lock, line_flow_mat);
@@ -147,6 +157,7 @@ impl GridState {
         let mut bounds_min = glm::DVec2::new(1E9, 1E9);
         let mut bounds_max = glm::DVec2::new(-1E9, -1E9);
 
+        // Compute the bounding box of the power system based on all line endpoints
         for time_step in &system.lines {
             for line in time_step {
                 let pa = glm::DVec2::new(line.loc.sx, line.loc.sy);
@@ -163,8 +174,7 @@ impl GridState {
         log::info!("Bounds {bounds_min:?} {bounds_max:?}");
         log::info!("Domain {domain:?}");
 
-        //let (lower_hazard, upper_hazard) = make_hazard_planes(&mut state_lock, &domain);
-
+        // Optionally add floorplan and rulers to the scene
         let base_map = make_basemap(&mut state_lock, &system, &domain);
 
         let ruler = make_ruler(&mut state_lock, &domain, Voltage);
@@ -174,6 +184,7 @@ impl GridState {
 
         let summary_item = SummaryItem::new(&system, &domain, &mut state_lock);
 
+        // Construct shared GridState instance
         let ret = Arc::new(Mutex::new(GridState {
             state: state.clone(),
             system: Arc::new(system),
@@ -201,6 +212,7 @@ impl GridState {
             probe_move_request_signal: probe_signal_tx,
         }));
 
+        // Spawn time-step advancement watcher
         {
             let (tx, rx) = tokio::sync::mpsc::channel(16);
 
@@ -211,6 +223,7 @@ impl GridState {
             lock.send_back = Some(tx);
         }
 
+        // Spawn probe update service (handles probe movement + chart generation)
         {
             tokio::spawn(crate::methods::probe_service(ret.clone(), probe_signal_rx));
         }
@@ -218,6 +231,9 @@ impl GridState {
         ret
     }
 
+    /// Registers method handlers with the server after initial setup.
+    ///
+    /// Attaches user-interactable methods like time controls and probe creation.
     pub fn post_setup(state: &ServerStatePtr, app_state: &GridStatePtr) {
         let mut state_lock = state.lock().unwrap();
         let comp_set_time = state_lock
@@ -244,6 +260,7 @@ impl GridState {
             .methods
             .new_owned_component(create_toggle_line_load(app_state.clone()));
 
+        // Register methods to be advertised by the server
         state_lock.update_document(ServerDocumentUpdate {
             methods_list: Some(vec![
                 comp_set_time,
@@ -255,6 +272,7 @@ impl GridState {
             signals_list: None,
         });
 
+        // Cache references to shared interaction methods
         let move_func = state_lock
             .methods
             .new_owned_component(create_set_position(app_state.clone()));
@@ -270,11 +288,15 @@ impl GridState {
         }
     }
 
+    /// Returns the current normalized time step (0.0 - 1.0).
     pub fn time_frac(&self) -> f32 {
         self.time_step as f32 / self.max_time_step as f32
     }
 }
 
+/// Recomputes all instance data and line visuals based on the current time step.
+///
+/// Clears all geometry buffers, processes per-phase instances, and updates visibility.
 pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
     log::debug!("Recomputing all");
     gstate.bus.buffer.clear();
@@ -290,6 +312,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
 
     // ===
 
+    // Toggle ruler visibility based on active data mode
     if gstate.show_line_load != gstate.previous_show_line_load {
         gstate.previous_show_line_load = gstate.show_line_load;
 
@@ -318,6 +341,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
     const BAND_GREEN: f32 = 0.33;
     const BAND_BLUE: f32 = 0.66;
 
+    // Recompute bus indicators (for phase A)
     recompute_buses(
         line_ts,
         |s| LineGetterResult {
@@ -334,7 +358,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         gstate.show_line_load,
     );
 
-    // ===
+    // Recompute main line visuals for all three phases
 
     // Phase A
     recompute_lines(
@@ -390,11 +414,11 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         gstate.show_line_load,
     );
 
-    // Ground Lines
+    // Generate low-lying ground-level connections (topological view)
 
     recompute_gound_lines(line_ts, &gstate.domain, &mut gstate.line.buffer);
 
-    // ===
+    // Recompute flowing animation indicators for phase A
 
     recompute_line_flows(
         line_ts,
@@ -412,7 +436,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         gstate.show_line_load,
     );
 
-    // ===
+    // Recompute transformer visuals for phases A/B/C
 
     recompute_tfs(
         tf_ts,
@@ -456,7 +480,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         &mut gstate.transformer.buffer,
     );
 
-    // ===
+    // Recompute generator visuals (single-phase)
 
     recompute_gens(
         gen_ts,
@@ -472,7 +496,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         gstate.show_line_load,
     );
 
-    // ===
+    // Upload all instance buffers to the GPU and patch renderables
 
     for element in [
         &gstate.bus,
@@ -486,14 +510,16 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
     }
 }
 
-/// Update instances with a buffer
+/// Uploads instance buffer data to the GPU and applies it to the target entity.
+///
+/// Wraps the buffer in a view and patches the entity’s instance data.
 fn update_buffers(lock: &mut ServerState, element: &InstancedItem) {
-    //assert!(!element.buffer.is_empty());
-
+    // Allocate a GPU buffer for the new instance data
     let line_buffer = lock
         .buffers
         .new_component(BufferState::new_from_bytes(element.buffer.clone()));
 
+    // Create a view of the entire buffer for instance binding
     let view = lock
         .buffer_views
         .new_component(ServerBufferViewState::new_from_whole_buffer(line_buffer));

@@ -8,6 +8,7 @@ use crate::{
 
 use nalgebra_glm as glm;
 
+/// Struct for extracting simplified per-line metrics used in instance rendering.
 pub struct LineGetterResult {
     pub volt_start: f32,
     pub volt_end: f32,
@@ -32,6 +33,10 @@ pub struct GeneratorGetterResult {
     pub react: f32,
 }
 
+/// Recomputes bus instance transforms and encodes them into a GPU-friendly buffer.
+///
+/// Each bus is a vertical element placed at a line endpoint, lifted by voltage
+/// or line load and encoded with transform, color, and scale data.
 pub fn recompute_buses<F>(
     src: &[LineState],
     getter: F,
@@ -54,6 +59,7 @@ pub fn recompute_buses<F>(
             line_load,
         } = getter(state);
 
+        // Determine the vertical height of each endpoint, based on either voltage or line load
         let (height_a, height_b) = if use_line_load {
             (
                 d.line_load_to_height(line_load),
@@ -90,6 +96,7 @@ pub fn recompute_buses<F>(
         let safety = d.voltage_safety((volt_start + volt_end) / 2.0);
         let saturation = safety_to_saturation(safety);
 
+        // Assign texture coords using a "color band" and safety-based saturation
         let texture = glm::vec2(color_band, saturation);
 
         // large tube to show tf bounds
@@ -104,6 +111,9 @@ pub fn recompute_buses<F>(
     }
 }
 
+/// Converts a line state into a 4x4 matrix with color and orientation metadata.
+///
+/// This is used for generating line flow or voltage/power bar representations.
 #[inline]
 fn state_to_line<F, T, C>(
     state: &LineState,
@@ -156,11 +166,7 @@ where
 
     let mut v = p_b - p_a;
 
-    // flow by voltage gradient
-    //if p_a.y > p_b.y {
-    //    v = -v;
-    //}
-    // flow by power direction
+    // Flip flow direction based on power direction (flow = negative watt)
     if 0.0 > watt {
         v = -v;
     }
@@ -179,6 +185,7 @@ where
 
     let texture = texture(&result, v.magnitude());
 
+    // Construct instance matrix with position, texture info, rotation, and scale
     Some([
         center.x,
         center.y,
@@ -207,6 +214,9 @@ fn safety_to_saturation(v: VoltageSafety) -> f32 {
     }
 }
 
+/// Detects hazard line intersections with horizontal voltage bands
+///
+/// This discretizes intersections and stores them for later instance creation.
 struct HazardCheck {
     snap: f32,
     v_min_height: f32,
@@ -250,6 +260,8 @@ impl HazardCheck {
     }
 
     fn check(&mut self, a: glm::Vec3, b: glm::Vec3) {
+        // Snap point to grid and record whether it intersects upper or lower band
+
         if let Some(point) = line_plane_intersection(a, b, self.v_min_height) {
             let point: glm::IVec3 = glm::round(&(point / self.snap)).try_cast().unwrap();
             self.map_intersect.insert((point.x, point.z, 0));
@@ -283,6 +295,9 @@ impl HazardCheck {
     }
 }
 
+/// Builds per-instance transforms for all power lines and detects hazard zones.
+///
+/// Outputs both instance matrices and, if applicable, intersection hazard boxes.
 #[allow(clippy::too_many_arguments)]
 pub fn recompute_lines<F>(
     src: &[LineState],
@@ -301,6 +316,8 @@ pub fn recompute_lines<F>(
     let mut checker = HazardCheck::new(d);
 
     for state in src.iter() {
+        // Process each line, converting to instance data and checking for hazards
+
         let Some(matrix) = state_to_line(
             state,
             &getter,
@@ -323,10 +340,13 @@ pub fn recompute_lines<F>(
     }
 
     if !line_load {
+        // Generate hazard geometry for intersections with voltage limits
+
         checker.create_matrices(hazard_parts);
     }
 }
 
+/// Creates low-lying "ground lines" that visually represent line topology on the ground.
 pub fn recompute_gound_lines(src: &[LineState], d: &Domain, dest: &mut Vec<u8>) {
     log::debug!("Recompute ground line {}", src.len());
 
@@ -354,6 +374,7 @@ pub fn recompute_gound_lines(src: &[LineState], d: &Domain, dest: &mut Vec<u8>) 
 
         let center = (p_a + p_b) / 2.0;
 
+        // Basic blue line with uniform thin tube and neutral transform
         let matrix: [f32; 16] = [
             center.x,
             center.y,
@@ -377,6 +398,9 @@ pub fn recompute_gound_lines(src: &[LineState], d: &Domain, dest: &mut Vec<u8>) 
     }
 }
 
+/// Generates flowing visual instances based on power or voltage.
+///
+/// Encodes flow rate into texture scale and slight geometry padding for effect.
 pub fn recompute_line_flows<F>(
     src: &[LineState],
     getter: F,
@@ -402,6 +426,7 @@ pub fn recompute_line_flows<F>(
             continue;
         };
 
+        // Nudge tube width/height slightly for visual separation
         matrix[12] += 0.002;
         matrix[13] += 0.002;
 
@@ -409,6 +434,9 @@ pub fn recompute_line_flows<F>(
     }
 }
 
+/// Builds transformer visual elements using height-based scaling.
+///
+/// Includes both the main transformer and a "link" tube to the baseline.
 pub fn recompute_tfs<F>(
     src: &[TransformerState],
     getter: F,
@@ -463,7 +491,7 @@ pub fn recompute_tfs<F>(
 
         let texture = glm::vec2(color_band, 0.6);
 
-        // large tube to show tf bounds
+        // First tube: transformer height bounds
         let mat = [
             center.x, center.y, center.z, 0.0, //
             texture.x, texture.y, 1.0, 1.0, //
@@ -473,6 +501,7 @@ pub fn recompute_tfs<F>(
 
         dest.extend_from_slice(bytemuck::cast_slice(&mat));
 
+        // Second tube: thin baseline connection to floor
         let hx = d.volt_height_max - d.volt_height_min;
 
         // thinner tube to show tf to map
@@ -499,6 +528,7 @@ pub fn recompute_tfs<F>(
     }
 }
 
+/// Builds generator instance transforms with voltage-aware height and width.
 pub fn recompute_gens<F>(
     src: &[GeneratorState],
     getter: F,
@@ -536,6 +566,7 @@ pub fn recompute_gens<F>(
 
         log::debug!("GEN {p_a:?} {real} {width} | {react} {height}");
 
+        // Basic yellow generator box
         let mat = [
             p_a.x, p_a.y, p_a.z, 0.0, //
             0.25, 0.5, 1.0, 1.0, //

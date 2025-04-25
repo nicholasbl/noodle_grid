@@ -4,13 +4,18 @@ use nalgebra_glm as glm;
 
 use crate::geometry::{make_bus, make_cube, make_cyl};
 
-/// Collects relevant info for instancing geometry
+/// Represents a template for instancing entities with geometry and per-instance data.
+///
+/// The `buffer` is used to store transform data (empty initially).
 pub struct InstancedItem {
     pub entity: EntityReference,
     pub geometry: GeometryReference,
     pub buffer: Vec<u8>,
 }
 
+/// Creates an instanced bus element.
+///
+/// This generates a basic bus geometry and an entity ready for instancing.
 pub fn make_bus_element(state: &mut ServerState, material: MaterialReference) -> InstancedItem {
     // Create geometry for the buses
     let geometry = make_bus(state, glm::identity(), material);
@@ -24,7 +29,7 @@ pub fn make_bus_element(state: &mut ServerState, material: MaterialReference) ->
             representation: Some(ServerEntityRepresentation::new_render(
                 ServerRenderRepresentation {
                     mesh: geometry.clone(),
-                    instances: None,
+                    instances: None, // Instances will be populated later
                 },
             )),
             ..Default::default()
@@ -38,6 +43,9 @@ pub fn make_bus_element(state: &mut ServerState, material: MaterialReference) ->
     }
 }
 
+/// Creates an instanced line element.
+///
+/// This uses a cube geometry as the base for line visualization.
 pub fn make_line_element(state: &mut ServerState, material: MaterialReference) -> InstancedItem {
     // Create geometry for the lines
     let geometry = make_cube(state, glm::identity(), material);
@@ -65,12 +73,13 @@ pub fn make_line_element(state: &mut ServerState, material: MaterialReference) -
     }
 }
 
+/// Creates an instanced line element with flow texture mapping.
+///
+/// Loads a pre-textured cube mesh from an embedded OBJ file.
 pub fn make_line_flow_element(
     state: &mut ServerState,
     material: MaterialReference,
 ) -> InstancedItem {
-    // Create geometry for the lines
-
     const TEX_CUBE: &str = include_str!("../assets/tex_cube.obj");
 
     let contents = std::io::BufReader::new(std::io::Cursor::new(TEX_CUBE));
@@ -89,6 +98,9 @@ pub fn make_line_flow_element(
     }
 }
 
+/// Creates an instanced transformer element.
+///
+/// Uses a cylinder primitive for the transformer body.
 pub fn make_transformer_element(
     state: &mut ServerState,
     material: MaterialReference,
@@ -119,9 +131,10 @@ pub fn make_transformer_element(
     }
 }
 
+/// Creates an instanced generator element.
+///
+/// Loads a yellow generator model from an embedded OBJ file.
 pub fn make_generator_element(state: &mut ServerState) -> InstancedItem {
-    // Create geometry for the generators
-
     let contents = include_str!("../assets/generator.obj");
 
     let contents = std::io::BufReader::new(std::io::Cursor::new(contents));
@@ -154,6 +167,9 @@ pub fn make_generator_element(state: &mut ServerState) -> InstancedItem {
     }
 }
 
+/// Creates an instanced hazard marker element.
+///
+/// Loads a rounded rectangle mesh from an embedded OBJ file.
 pub fn make_hazard_element(state: &mut ServerState, material: MaterialReference) -> InstancedItem {
     let contents = include_str!("../assets/rounded_rect.obj");
 

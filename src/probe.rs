@@ -13,6 +13,9 @@ use crate::texture::texture_from_bytes;
 use crate::GridState;
 use crate::{chart::*, ruler::make_obj};
 
+/// Represents a movable probe in the visualization space.
+///
+/// Probes can attach to nearby lines, generate charts, and be interactively manipulated.
 pub struct Probe {
     pub entity: EntityReference,
     pub world_pos: Vec3,
@@ -26,6 +29,7 @@ pub struct Probe {
 }
 
 impl Probe {
+    /// Creates a new probe with default uninitialized state.
     pub fn new(entity: EntityReference) -> Self {
         Self {
             entity,
@@ -39,10 +43,13 @@ impl Probe {
         }
     }
 
-    /// Creates an object that the user can grab to reposition the chart
+    /// Installs a draggable handle entity for this probe.
+    ///
+    /// Allows users to reposition the associated chart interactively.
     pub fn install_handle(&mut self, gs: &mut GridState, state: &mut ServerState) {
         let geometry = make_sphere(state, glm::vec3(0.0, 0.0, 1.0), 0.05);
 
+        // Position the handle slightly above and offset from the probe's world position
         let placement: [f32; 16] = {
             let spot: Vec3 = self.world_pos;
             let tf = glm::translation(&(spot + glm::vec3(0.25, 1.0, 0.0)));
@@ -66,7 +73,9 @@ impl Probe {
         }));
     }
 
-    /// Given a list of lines, we want to find the closest one, in 2D space
+    /// Finds the closest line segment to the probe in 2D space.
+    ///
+    /// Returns both the index and closest point on the line.
     fn get_closest_line(&self, gs: &mut GridState) -> Option<(usize, Vec2)> {
         let lines = gs.system.lines.get(gs.time_step)?;
 
@@ -74,6 +83,7 @@ impl Probe {
 
         let p = self.world_pos.xz();
 
+        // Track minimum distance and closest line index
         let mut min_distance = f32::INFINITY;
         let mut index: usize = usize::MAX;
         let mut closest_point = vec2(0.0, 0.0);
@@ -95,6 +105,7 @@ impl Probe {
             let t = ap.dot(&ab) / ab.dot(&ab);
             let c = a + t * ab;
 
+            // Update closest if this segment is nearer
             let this_distance = if t < 0.0 {
                 distance(&p.into(), &a.into())
             } else if t > 1.0 {
@@ -117,7 +128,9 @@ impl Probe {
         }
     }
 
-    /// Generate a chart, and build the graphics object for the chart display
+    /// Installs a floating chart billboard above the probe.
+    ///
+    /// Generates geometry, texture, and parent-child relationships.
     fn install_chart(&mut self, gs: &mut GridState, state: &mut ServerState, new_image: Vec<u8>) {
         log::debug!("Generating chart for {}", self.line_i);
 
@@ -125,6 +138,7 @@ impl Probe {
         let tex = texture_from_bytes(state, &new_image, "Voltage for Line");
         log::debug!("Tex: {}", chart_gen_timer.elapsed().as_millis());
 
+        // Create material using the chart texture
         let chart_mat = state.materials.new_component(ServerMaterialState {
             name: Some("Chart Material".into()),
             mutable: ServerMaterialStateUpdatable {
@@ -143,6 +157,7 @@ impl Probe {
             },
         });
 
+        // Create a plane rotated to face the user, scaled for aspect ratio
         let geometry = {
             let transform = glm::rotate_x(&Mat4::identity(), 90.0f32.to_radians());
             let transform = glm::scale(&transform, &glm::vec3(0.5, 1.0, 0.4));
@@ -154,6 +169,7 @@ impl Probe {
             tf.as_slice().try_into().unwrap()
         };
 
+        // Ensure we have a handle to attach the chart to
         if self.handle.is_none() {
             self.install_handle(gs, state);
         }
@@ -180,6 +196,7 @@ impl Probe {
         self.install_delete_buttion(gs, state);
     }
 
+    /// Adds a delete button next to the chart, allowing user to remove the probe.
     fn install_delete_buttion(&mut self, gs: &mut GridState, state: &mut ServerState) {
         let del_obj = make_obj(
             state,
@@ -191,6 +208,7 @@ impl Probe {
             include_str!("../assets/close.obj"),
         );
 
+        // Patch delete button with an activation method (click-to-delete)
         let patch = ServerEntityStateUpdatable {
             methods_list: Some(vec![gs.activate_func.clone().unwrap()]),
             ..Default::default()
@@ -201,6 +219,9 @@ impl Probe {
         self.chart_delete = Some(del_obj);
     }
 
+    /// Updates the probe's world position and reattaches it to the closest line.
+    ///
+    /// If the attached line changes, resets internal reference.
     pub fn update(&mut self, gs: &mut GridState) {
         log::debug!("Updating probe {:?}", self.dirty);
         // new position
@@ -219,6 +240,7 @@ impl Probe {
 
         move_entity(&self.entity, vec3(closest_point.x, 0.0f32, closest_point.y));
 
+        // If already attached to correct line, no change needed
         if self.line_i == closest_line_index {
             return;
         }
@@ -226,6 +248,9 @@ impl Probe {
         self.line_i = closest_line_index;
     }
 
+    /// Checks if a clicked entity corresponds to this probe's delete button.
+    ///
+    /// Returns a `ClickResult` if matched.
     pub fn check_click(&self, entity: &EntityReference) -> Option<ClickResult> {
         if entity.id()
             == self
@@ -241,10 +266,14 @@ impl Probe {
     }
 }
 
+/// Possible outcomes of clicking on probe-related UI elements.
 pub enum ClickResult {
     Delete,
 }
 
+/// Moves an entity to a new 3D world position.
+///
+/// Updates its transform immediately.
 fn move_entity(entity: &EntityReference, pos: Vec3) {
     let tf = glm::translation(&pos);
     let tf: [f32; 16] = tf.as_slice().try_into().unwrap();
@@ -257,10 +286,14 @@ fn move_entity(entity: &EntityReference, pos: Vec3) {
     update.patch(entity);
 }
 
+/// Updates all probes, generating charts and repositioning entities if needed.
+///
+/// Splits work into two stages to avoid blocking other operations.
 pub fn update_probes(gs: GridStatePtr) {
     let chart_timer = std::time::Instant::now();
     // we need to do this in stages to avoid blocking others from using the state. First step is to see if any probes are dirty. If they are, we want to start generating new chart images for them
 
+    // Stage 1: Mark dirty probes and schedule chart generation
     let mut image_to_generate = HashMap::<EntityID, (usize, Vec<u8>)>::default();
 
     let power_system = {
@@ -285,6 +318,7 @@ pub fn update_probes(gs: GridStatePtr) {
         gs.system.clone()
     };
 
+    // Stage 2: Generate charts for updated probes
     for item in image_to_generate.values_mut() {
         // now generate lines
         // let chart_gen_timer = std::time::Instant::now();
@@ -300,6 +334,7 @@ pub fn update_probes(gs: GridStatePtr) {
 
         let mut probes = std::mem::take(&mut gs.probes);
 
+        // Stage 3: Install new charts into probes after generation
         for item in &mut probes {
             let Some((_, content)) = image_to_generate.remove(&item.entity.id()) else {
                 continue;
