@@ -17,6 +17,7 @@ pub fn import_file<R: std::io::BufRead>(
     mut from: R,
     state: &mut ServerState,
     transform: Option<glm::Mat4>,
+    parent: Option<EntityReference>,
     material_override: Option<MaterialReference>,
 ) -> Result<ObjectList> {
     let mut line = String::new();
@@ -73,6 +74,7 @@ pub fn import_file<R: std::io::BufRead>(
         let entity = state.entities.new_component(ServerEntityState {
             name: Some(sub_obj.name),
             mutable: ServerEntityStateUpdatable {
+                parent: parent.clone(),
                 representation: Some(ServerEntityRepresentation::new_render(
                     RenderRepresentation {
                         mesh: geom_ref.clone(),

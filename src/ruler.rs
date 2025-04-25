@@ -2,10 +2,19 @@ use colabrodo_server::{server::*, server_messages::*};
 
 use nalgebra_glm::{self as glm, vec3, Mat4};
 
-use crate::{domain::Domain, geometry::make_plane, texture::make_ruler_texture};
+use crate::{domain::Domain, geometry::make_plane, texture::*};
 
-pub fn make_ruler(state: &mut ServerState, domain: &Domain) -> EntityReference {
-    let tex = make_ruler_texture(state);
+#[derive(Debug, PartialEq)]
+pub enum RulerType {
+    Voltage,
+    LineLoad,
+}
+
+pub fn make_ruler(state: &mut ServerState, domain: &Domain, ty: RulerType) -> EntityReference {
+    let tex = match ty {
+        RulerType::Voltage => make_ruler_texture(state),
+        RulerType::LineLoad => make_ruler_ll_texture(state),
+    };
 
     let mat = state.materials.new_component(ServerMaterialState {
         name: Some("Ruler Material".into()),
@@ -45,6 +54,7 @@ pub fn make_ruler(state: &mut ServerState, domain: &Domain) -> EntityReference {
                     instances: None,
                 },
             )),
+            visible: Some(ty == RulerType::Voltage),
             ..Default::default()
         },
     })
@@ -67,6 +77,7 @@ impl VerticalAxisSelector {
             [0.5, 0.5, 0.5, 1.0],
             glm::vec3(0.5, 0.5, 0.5),
             glm::vec3(0.5, 0.0, 0.0),
+            None,
             indicator_source,
         );
 
@@ -78,6 +89,7 @@ impl VerticalAxisSelector {
             [0.5, 0.5, 0.5, 1.0],
             glm::vec3(0.5, 0.5, 0.5),
             glm::vec3(0.5, 0.0, 0.0),
+            None,
             voltage_source,
         );
 
@@ -89,6 +101,7 @@ impl VerticalAxisSelector {
             [0.5, 0.5, 0.5, 1.0],
             glm::vec3(0.5, 0.5, 0.5),
             glm::vec3(0.5, 0.0, 0.0),
+            None,
             line_load_source,
         );
 
@@ -100,12 +113,13 @@ impl VerticalAxisSelector {
     }
 }
 
-fn make_obj(
+pub fn make_obj(
     state: &mut ServerState,
     name: &str,
     color: [f32; 4],
     scale: glm::Vec3,
     offset: glm::Vec3,
+    parent: Option<EntityReference>,
     content: &str,
 ) -> EntityReference {
     let contents = std::io::BufReader::new(std::io::Cursor::new(content));
@@ -126,11 +140,12 @@ fn make_obj(
     let tf = glm::translation(&offset);
     let scale = glm::scale(&tf, &scale);
 
-    let (entity, _) = crate::import_obj::import_file(contents, state, Some(scale), Some(material))
-        .unwrap()
-        .into_iter()
-        .next()
-        .unwrap();
+    let (entity, _) =
+        crate::import_obj::import_file(contents, state, Some(scale), parent, Some(material))
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
 
     entity
 }

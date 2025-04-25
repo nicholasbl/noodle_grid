@@ -13,6 +13,7 @@ pub struct LineGetterResult {
     pub volt_end: f32,
     pub watt: f32,
     pub vars: f32,
+    pub line_load: f32,
 }
 
 #[allow(dead_code)]
@@ -38,6 +39,7 @@ pub fn recompute_buses<F>(
     offset: glm::Vec3,
     color_band: f32,
     dest: &mut Vec<u8>,
+    use_line_load: bool,
 ) where
     F: Fn(&LineState) -> LineGetterResult,
 {
@@ -49,17 +51,30 @@ pub fn recompute_buses<F>(
             volt_end,
             watt,
             vars,
+            line_load,
         } = getter(state);
+
+        let (height_a, height_b) = if use_line_load {
+            (
+                d.line_load_to_height(line_load),
+                d.line_load_to_height(line_load),
+            )
+        } else {
+            (
+                d.voltage_to_height(volt_start),
+                d.voltage_to_height(volt_end),
+            )
+        };
 
         let p_a = glm::vec3(
             d.lerp_x(state.loc.sx as f32),
-            d.voltage_to_height(volt_start),
+            height_a,
             d.lerp_y(state.loc.sy as f32),
         ) + offset;
 
         let p_b = glm::vec3(
             d.lerp_x(state.loc.ex as f32),
-            d.voltage_to_height(volt_end),
+            height_b,
             d.lerp_y(state.loc.ey as f32),
         ) + offset;
 
@@ -97,6 +112,7 @@ fn state_to_line<F, T, C>(
     mut callback: C,
     d: &Domain,
     offset: glm::Vec3,
+    use_line_load: bool,
 ) -> Option<[f32; 16]>
 where
     F: Fn(&LineState) -> LineGetterResult,
@@ -109,17 +125,30 @@ where
         volt_end,
         watt,
         vars,
+        line_load,
     } = result;
+
+    let (height_a, height_b) = if use_line_load {
+        (
+            d.line_load_to_height(line_load),
+            d.line_load_to_height(line_load),
+        )
+    } else {
+        (
+            d.voltage_to_height(volt_start),
+            d.voltage_to_height(volt_end),
+        )
+    };
 
     let p_a = glm::vec3(
         d.lerp_x(state.loc.sx as f32),
-        d.voltage_to_height(volt_start),
+        height_a,
         d.lerp_y(state.loc.sy as f32),
     ) + offset;
 
     let p_b = glm::vec3(
         d.lerp_x(state.loc.ex as f32),
-        d.voltage_to_height(volt_end),
+        height_b,
         d.lerp_y(state.loc.ey as f32),
     ) + offset;
 
@@ -262,6 +291,7 @@ pub fn recompute_lines<F>(
     color_band: f32,
     dest: &mut Vec<u8>,
     hazard_parts: &mut Vec<u8>,
+    line_load: bool,
 ) where
     F: Fn(&LineState) -> LineGetterResult,
 {
@@ -283,6 +313,7 @@ pub fn recompute_lines<F>(
             },
             d,
             offset,
+            line_load,
         ) else {
             continue;
         };
@@ -290,7 +321,9 @@ pub fn recompute_lines<F>(
         dest.extend_from_slice(bytemuck::cast_slice(&matrix));
     }
 
-    checker.create_matrices(hazard_parts);
+    if !line_load {
+        checker.create_matrices(hazard_parts);
+    }
 }
 
 pub fn recompute_gound_lines(src: &[LineState], d: &Domain, dest: &mut Vec<u8>) {
@@ -349,6 +382,7 @@ pub fn recompute_line_flows<F>(
     domain: &Domain,
     offset: glm::Vec3,
     dest: &mut Vec<u8>,
+    use_line_load: bool,
 ) where
     F: Fn(&LineState) -> LineGetterResult,
 {
@@ -362,6 +396,7 @@ pub fn recompute_line_flows<F>(
             |_, _, _| {},
             domain,
             offset,
+            use_line_load,
         ) else {
             continue;
         };
@@ -469,6 +504,7 @@ pub fn recompute_gens<F>(
     d: &Domain,
     offset: glm::Vec3,
     dest: &mut Vec<u8>,
+    use_line_load: bool,
 ) where
     F: Fn(&GeneratorState) -> GeneratorGetterResult,
 {
@@ -481,9 +517,15 @@ pub fn recompute_gens<F>(
             react,
         } = getter(state);
 
+        let height = if use_line_load {
+            0.0
+        } else {
+            d.voltage_to_height(voltage)
+        };
+
         let p_a = glm::vec3(
             d.lerp_x(state.loc.sx as f32),
-            d.voltage_to_height(voltage),
+            height,
             d.lerp_y(state.loc.sy as f32),
         ) + offset;
 

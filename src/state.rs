@@ -13,7 +13,11 @@ use crate::{
     },
     methods::*,
     probe::Probe,
-    ruler::{make_ruler, VerticalAxisSelector},
+    ruler::{
+        make_ruler,
+        RulerType::{LineLoad, Voltage},
+        VerticalAxisSelector,
+    },
     summary::SummaryItem,
     texture::{make_chevron_texture, make_hsv_texture},
     PowerSystem,
@@ -34,6 +38,8 @@ pub struct GridState {
     pub time_step: usize,
     pub time_step_direction: i32,
     pub max_time_step: usize,
+    pub previous_show_line_load: bool,
+    pub show_line_load: bool,
 
     pub domain: Domain,
 
@@ -41,7 +47,8 @@ pub struct GridState {
 
     _base_map: Option<EntityReference>,
 
-    _ruler: EntityReference,
+    ruler: EntityReference,
+    line_load_ruler: EntityReference,
 
     //pub axis_selector: VerticalAxisSelector,
     pub summary: SummaryItem,
@@ -161,7 +168,8 @@ impl GridState {
 
         let base_map = make_basemap(&mut state_lock, &system, &domain);
 
-        let ruler = make_ruler(&mut state_lock, &domain);
+        let ruler = make_ruler(&mut state_lock, &domain, Voltage);
+        let ruler_ll = make_ruler(&mut state_lock, &domain, LineLoad);
 
         let (probe_signal_tx, probe_signal_rx) = tokio::sync::mpsc::unbounded_channel::<bool>();
 
@@ -175,6 +183,8 @@ impl GridState {
             time_step: (ts_len / 2).clamp(0, ts_len),
             time_step_direction: 0,
             max_time_step: ts_len,
+            previous_show_line_load: false,
+            show_line_load: false,
             bus,
             line,
             line_flow,
@@ -183,7 +193,8 @@ impl GridState {
             domain,
             hazard,
             _base_map: base_map,
-            _ruler: ruler,
+            ruler,
+            line_load_ruler: ruler_ll,
             summary: summary_item,
             move_func: None,
             activate_func: None,
@@ -233,12 +244,17 @@ impl GridState {
             .methods
             .new_owned_component(create_activate(app_state.clone()));
 
+        let create_line_load = state_lock
+            .methods
+            .new_owned_component(create_toggle_line_load(app_state.clone()));
+
         state_lock.update_document(ServerDocumentUpdate {
             methods_list: Some(vec![
                 comp_set_time,
                 comp_step_time,
                 comp_adv_time,
                 create_probe,
+                create_line_load,
             ]),
             signals_list: None,
         });
@@ -278,6 +294,30 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
 
     // ===
 
+    if gstate.show_line_load != gstate.previous_show_line_load {
+        gstate.previous_show_line_load = gstate.show_line_load;
+
+        let set_invisible = ServerEntityStateUpdatable {
+            visible: Some(false),
+            ..Default::default()
+        };
+
+        let set_visible = ServerEntityStateUpdatable {
+            visible: Some(true),
+            ..Default::default()
+        };
+
+        if gstate.show_line_load {
+            set_invisible.patch(&gstate.ruler);
+            set_visible.patch(&gstate.line_load_ruler);
+        } else {
+            set_visible.patch(&gstate.ruler);
+            set_invisible.patch(&gstate.line_load_ruler);
+        }
+    }
+
+    // ===
+
     const BAND_RED: f32 = 0.0;
     const BAND_GREEN: f32 = 0.33;
     const BAND_BLUE: f32 = 0.66;
@@ -289,11 +329,13 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
             volt_end: s.voltage.ea,
             watt: s.real_power.sa.abs(),
             vars: s.reactive_power.sa.abs(),
+            line_load: s.line_load.a,
         },
         &gstate.domain,
         PHASE_OFFSET * 0.0,
         BAND_RED,
         &mut gstate.bus.buffer,
+        gstate.show_line_load,
     );
 
     // ===
@@ -306,12 +348,14 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
             volt_end: s.voltage.ea,
             watt: s.real_power.sa,
             vars: s.reactive_power.sa,
+            line_load: s.line_load.a,
         },
         &gstate.domain,
         PHASE_OFFSET * 0.0,
         BAND_RED,
         &mut gstate.line.buffer,
         &mut gstate.hazard.buffer,
+        gstate.show_line_load,
     );
 
     // Phase B
@@ -322,12 +366,14 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
             volt_end: s.voltage.eb,
             watt: s.real_power.sb,
             vars: s.reactive_power.sb,
+            line_load: s.line_load.b,
         },
         &gstate.domain,
         PHASE_OFFSET * 1.0,
         BAND_GREEN,
         &mut gstate.line.buffer,
         &mut gstate.hazard.buffer,
+        gstate.show_line_load,
     );
 
     // Phase C
@@ -338,12 +384,14 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
             volt_end: s.voltage.ec,
             watt: s.real_power.sc,
             vars: s.reactive_power.ec,
+            line_load: s.line_load.c,
         },
         &gstate.domain,
         PHASE_OFFSET * 2.0,
         BAND_BLUE,
         &mut gstate.line.buffer,
         &mut gstate.hazard.buffer,
+        gstate.show_line_load,
     );
 
     // Ground Lines
@@ -359,11 +407,13 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
             volt_end: s.voltage.ea,
             watt: s.real_power.sa.abs(),
             vars: s.reactive_power.sa.abs(),
+            line_load: s.line_load.a,
         },
         &gstate.domain,
         PHASE_OFFSET * 0.0,
         //BAND_RED,
         &mut gstate.line_flow.buffer,
+        gstate.show_line_load,
     );
 
     // ===
@@ -423,6 +473,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
         &gstate.domain,
         PHASE_OFFSET * 0.0,
         &mut gstate.generator.buffer,
+        gstate.show_line_load,
     );
 
     // ===

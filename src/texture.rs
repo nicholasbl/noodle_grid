@@ -36,8 +36,13 @@ pub fn make_chevron_texture(state: &mut ServerState) -> TextureReference {
     texture_from_bytes(state, CHEV_TEXTURE_BYTES, "Line Flow")
 }
 
-const RULER_TEXTURE_BYTES: &[u8; 414575] = include_bytes!("../assets/ruler.png");
+const RULER_TEXTURE_BYTES: &[u8; 430225] = include_bytes!("../assets/ruler.png");
+const RULER_LL_TEXTURE_BYTES: &[u8; 444139] = include_bytes!("../assets/ruler_line_load.png");
 
 pub fn make_ruler_texture(state: &mut ServerState) -> TextureReference {
     texture_from_bytes(state, RULER_TEXTURE_BYTES, "Ruler")
+}
+
+pub fn make_ruler_ll_texture(state: &mut ServerState) -> TextureReference {
+    texture_from_bytes(state, RULER_LL_TEXTURE_BYTES, "Ruler (LL)")
 }

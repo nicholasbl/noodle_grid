@@ -77,6 +77,12 @@ impl Domain {
     }
 
     #[inline]
+    pub fn line_load_to_height(&self, v: f32) -> f32 {
+        v.abs()
+            .clamped_lerp(0.0, 2.0, self.volt_height_min, self.volt_height_max)
+    }
+
+    #[inline]
     pub fn voltage_safety(&self, v: f32) -> VoltageSafety {
         if v < 0.95 {
             VoltageSafety::Low

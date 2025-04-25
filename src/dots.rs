@@ -67,6 +67,7 @@ pub struct LineState {
     pub real_power: EndPhased,
     pub reactive_power: EndPhased,
     pub loc: EndedPosition,
+    pub line_load: Phased<f32>,
 }
 
 /// A timestep of a transformer
@@ -211,6 +212,11 @@ pub fn load_powersystem(path: &Path) -> Result<PowerSystem, anyhow::Error> {
                         ec: a.get_react_c_to(),
                     }
                     .scaled(var_divisors as f32),
+                    line_load: Phased {
+                        a: a.get_line_load_real_a(),
+                        b: a.get_line_load_real_b(),
+                        c: a.get_line_load_real_c(),
+                    },
                     loc: iter.0,
                 });
             }

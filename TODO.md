@@ -3,16 +3,16 @@
     - Add an ability to toggle between coloring by phase and LL
     - Let LL be a gradient on the phase color
     - Or ???
-- Add the ability to probe and tooltip
-  - generate graphs on PV panels, batteries, and loads
-  - basic metadata on buses and lines
-- Would be nice to hide or other make some lines/branches transparent
 - Show open switches (annotation nodes)
 - Show line node position switches
 - Custom app for deployment
 - Show probed-item location
+- Can we do a look-at and then probe with a click?
 - Documentation
 - Batteries versus PV
 - Toggle reactive - real flow
 - Skybox for VP app
-- Remove probes. Possible two charts per probe?
+- Color based on voltage?
+- Background options? have to be in immersive mode
+- Check power flow direction
+- battery charging and discharging

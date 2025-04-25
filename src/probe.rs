@@ -2,19 +2,16 @@ use std::collections::HashMap;
 
 use colabrodo_common::components::*;
 use colabrodo_common::nooid::EntityID;
-use colabrodo_server::{
-    server::{self, *},
-    server_messages::*,
-};
+use colabrodo_server::{server::*, server_messages::*};
 use nalgebra::distance;
 use nalgebra_glm::{self as glm, vec3, Mat4, Vec2};
 use nalgebra_glm::{vec2, Vec3};
 
-use crate::chart::*;
 use crate::geometry::{make_plane, make_sphere};
 use crate::state::GridStatePtr;
 use crate::texture::texture_from_bytes;
 use crate::GridState;
+use crate::{chart::*, ruler::make_obj};
 
 pub struct Probe {
     pub entity: EntityReference,
@@ -184,30 +181,24 @@ impl Probe {
     }
 
     fn install_delete_buttion(&mut self, gs: &mut GridState, state: &mut ServerState) {
-        let geometry = make_sphere(state, glm::vec3(1.0, 0.1, 0.1), 0.05);
+        let del_obj = make_obj(
+            state,
+            "Delete Button",
+            [1.0, 0.2, 0.2, 1.0],
+            glm::vec3(0.025, 0.025, 0.025),
+            glm::vec3(0.25, 0.25, 0.0),
+            self.chart.clone(),
+            include_str!("../assets/close.obj"),
+        );
 
-        let placement: [f32; 16] = {
-            let tf = glm::translation(&glm::vec3(0.25, 0.25, 0.0));
-            tf.as_slice().try_into().unwrap()
+        let patch = ServerEntityStateUpdatable {
+            methods_list: Some(vec![gs.activate_func.clone().unwrap()]),
+            ..Default::default()
         };
 
-        let entity = state.entities.new_component(ServerEntityState {
-            name: Some("Delete Button".to_string()),
-            mutable: ServerEntityStateUpdatable {
-                parent: Some(self.chart.clone().unwrap()),
-                transform: Some(placement),
-                representation: Some(ServerEntityRepresentation::new_render(
-                    ServerRenderRepresentation {
-                        mesh: geometry,
-                        instances: None,
-                    },
-                )),
-                methods_list: Some(vec![gs.activate_func.clone().unwrap()]),
-                ..Default::default()
-            },
-        });
+        patch.patch(&del_obj);
 
-        self.chart_delete = Some(entity);
+        self.chart_delete = Some(del_obj);
     }
 
     pub fn update(&mut self, gs: &mut GridState) {
@@ -236,7 +227,17 @@ impl Probe {
     }
 
     pub fn check_click(&self, entity: &EntityReference) -> Option<ClickResult> {
-        todo!()
+        if entity.id()
+            == self
+                .chart_delete
+                .as_ref()
+                .map(|f| f.id())
+                .unwrap_or_default()
+        {
+            return Some(ClickResult::Delete);
+        }
+
+        None
     }
 }
 

@@ -172,6 +172,7 @@ fn make_probe(gs: &mut GridState, state: &mut ServerState, context: Option<Invok
             contents,
             state,
             Some(scaling(&Vec3::repeat(0.25))),
+            None,
             Some(hazard_mat),
         )
         .unwrap()
@@ -195,7 +196,7 @@ fn make_probe(gs: &mut GridState, state: &mut ServerState, context: Option<Invok
 make_method_function!(
     create_probe,
     GridState,
-    "create_probe",
+    "Create Probe",
     "Add a probe to the visualization",
     {
         make_probe(app, state, None);
@@ -294,9 +295,13 @@ make_method_function!(set_position,
 make_method_function!(
     toggle_line_load,
     GridState,
-    "toggle_line_load",
+    "Toggle Line Load",
     "Toggle visibility of line loading",
-    { Ok(None) }
+    {
+        app.show_line_load = !app.show_line_load;
+        recompute_all(app, state);
+        Ok(None)
+    }
 );
 
 // =============================================================================
@@ -305,7 +310,7 @@ fn on_click(
     gs: &mut GridState,
     state: &mut ServerState,
     context: Option<InvokeIDType>,
-    _ty: ciborium::Value,
+    _ty: Option<ciborium::Value>,
 ) {
     // Has to be invoked on an entity
     let Some(InvokeIDType::Entity(ctx)) = context else {
@@ -327,7 +332,7 @@ make_method_function!(activate,
     GridState,
     strings::MTHD_ACTIVATE,
     "Activate an entity",
-    |kind : ciborium::Value : "Activation context"|,
+    | kind : Option<ciborium::Value> : "Activation context"|,
     {
         on_click(app, state, context, kind);
         Ok(None)
