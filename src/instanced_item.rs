@@ -133,8 +133,8 @@ pub fn make_transformer_element(
 
 /// Creates an instanced generator element.
 ///
-/// Loads a yellow generator model from an embedded OBJ file.
-pub fn make_generator_element(state: &mut ServerState) -> InstancedItem {
+/// Loads a generator model from an embedded OBJ file.
+pub fn make_generator_element(state: &mut ServerState, texture: TextureReference) -> InstancedItem {
     let contents = include_str!("../assets/generator.obj");
 
     let contents = std::io::BufReader::new(std::io::Cursor::new(contents));
@@ -143,7 +143,12 @@ pub fn make_generator_element(state: &mut ServerState) -> InstancedItem {
         name: None,
         mutable: ServerMaterialStateUpdatable {
             pbr_info: Some(ServerPBRInfo {
-                base_color: [1.0, 1.0, 0.0, 1.0],
+                base_color: [1.0, 1.0, 1.0, 1.0],
+                base_color_texture: Some(ServerTextureRef {
+                    texture,
+                    transform: None,
+                    texture_coord_slot: None,
+                }),
                 metallic: Some(1.0),
                 roughness: Some(0.25),
                 ..Default::default()

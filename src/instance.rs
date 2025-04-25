@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     domain::{Domain, VoltageSafety},
+    dots::GeneratorType,
     utility::roll_free_rotation,
     GeneratorState, LineState, TransformerState,
 };
@@ -31,6 +32,7 @@ pub struct GeneratorGetterResult {
     pub angle: f32,
     pub real: f32,
     pub react: f32,
+    pub ty: GeneratorType,
 }
 
 /// Recomputes bus instance transforms and encodes them into a GPU-friendly buffer.
@@ -546,6 +548,7 @@ pub fn recompute_gens<F>(
             angle: _,
             real,
             react,
+            ty,
         } = getter(state);
 
         let height = if use_line_load {
@@ -564,12 +567,22 @@ pub fn recompute_gens<F>(
         //let height = d.reactive_power_to_width(react.abs()) * 2.0;
         let height = width;
 
-        log::debug!("GEN {p_a:?} {real} {width} | {react} {height}");
+        let hue = match ty {
+            GeneratorType::Unknown => 0.0,
+            GeneratorType::Solar => 0.17,
+            GeneratorType::Battery => 0.3125,
+        };
 
-        // Basic yellow generator box
+        let sat = match ty {
+            GeneratorType::Unknown => 1.0,
+            _ => 0.5,
+        };
+
+        log::debug!("GEN {p_a:?} {real} {width} | {react} {height} | {hue} {sat}");
+
         let mat = [
             p_a.x, p_a.y, p_a.z, 0.0, //
-            0.25, 0.5, 1.0, 1.0, //
+            hue, sat, 1.0, 1.0, //
             0.0, 0.0, 0.0, 1.0, //
             width, height, width, 0.0, //
         ];

@@ -81,6 +81,25 @@ pub struct TransformerState {
     pub loc: Position,
 }
 
+/// A known generator type
+#[derive(Debug, Clone, Copy)]
+pub enum GeneratorType {
+    Unknown,
+    Solar,
+    Battery,
+}
+
+impl GeneratorType {
+    fn decode(text: &str) -> Self {
+        match text {
+            "pv" => GeneratorType::Solar,
+            "battery" => GeneratorType::Battery,
+            "solar" => GeneratorType::Solar,
+            _ => GeneratorType::Unknown,
+        }
+    }
+}
+
 /// A timestep of a generator (PV or battery)
 pub struct GeneratorState {
     pub voltage: Phased,
@@ -88,6 +107,7 @@ pub struct GeneratorState {
     pub real: f32,
     pub react: f32,
     pub loc: Position,
+    pub ty: GeneratorType,
 }
 
 /// Options for a map to show power systems context
@@ -323,11 +343,15 @@ fn load_generators(
                     f.get_wattage_divisor(),
                     f.get_vars_divisor(),
                 ),
+                f.get_type()
+                    .ok()
+                    .and_then(|f| f.to_str().ok())
+                    .unwrap_or(""),
             )
         })
         .collect();
 
-    let mut iters: Vec<_> = datas.iter().map(|f| (f.0, f.1.iter(), f.2)).collect();
+    let mut iters: Vec<_> = datas.iter().map(|f| (f.0, f.1.iter(), f.2, f.3)).collect();
     let time_step_count = data_src.get(0).get_data()?.len();
 
     for _ in 0..time_step_count {
@@ -336,6 +360,8 @@ fn load_generators(
         for iter in iters.iter_mut() {
             let (volt_div, _, _) = iter.2;
             let a = iter.1.next().unwrap();
+
+            let ty_str = iter.3;
 
             per_time_step.push(GeneratorState {
                 voltage: Phased {
@@ -351,6 +377,7 @@ fn load_generators(
                 real: a.get_real(),
                 react: a.get_react(),
                 loc: iter.0,
+                ty: GeneratorType::decode(ty_str),
             });
         }
         generators.push(per_time_step);

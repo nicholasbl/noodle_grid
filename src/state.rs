@@ -84,7 +84,7 @@ impl GridState {
         let mut state_lock = state.lock().unwrap();
 
         // Load texture and build material for color-mapped lines
-        let texture = make_hsv_texture(&mut state_lock);
+        let hsv_texture = make_hsv_texture(&mut state_lock);
 
         // Build a material for lines
         let line_mat = state_lock.materials.new_component(ServerMaterialState {
@@ -93,7 +93,7 @@ impl GridState {
                 pbr_info: Some(ServerPBRInfo {
                     base_color: [1.0, 1.0, 1.0, 1.0],
                     base_color_texture: Some(TextureRef {
-                        texture,
+                        texture: hsv_texture.clone(),
                         transform: None,
                         texture_coord_slot: None,
                     }),
@@ -148,7 +148,7 @@ impl GridState {
         let line = make_line_element(&mut state_lock, line_mat.clone());
         let line_flow = make_line_flow_element(&mut state_lock, line_flow_mat);
         let transformer = make_transformer_element(&mut state_lock, line_mat);
-        let generator = make_generator_element(&mut state_lock);
+        let generator = make_generator_element(&mut state_lock, hsv_texture);
         let hazard = make_hazard_element(&mut state_lock, hazard_mat);
 
         let ts_len = system.lines.len();
@@ -489,6 +489,7 @@ pub fn recompute_all(gstate: &mut GridState, server_state: &mut ServerState) {
             angle: s.angle.a,
             real: s.real,
             react: s.react,
+            ty: s.ty,
         },
         &gstate.domain,
         PHASE_OFFSET * 0.0,

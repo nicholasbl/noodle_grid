@@ -1,17 +1,10 @@
-- Represent line loading %. Not sure how to do this. We could:
-    - Add an ability to toggle between Voltage and LL
-    - Add an ability to toggle between coloring by phase and LL
-    - Let LL be a gradient on the phase color
-    - Or ???
 - Show open switches (annotation nodes)
-- Show line node position switches
-- Custom app for deployment
+  - Show line node position switches
 - Show probed-item location
 - Can we do a look-at and then probe with a click?
 - Documentation
 - Batteries versus PV
-- Toggle reactive - real flow
-- Skybox for VP app
+- Toggle reactive - real flow direction
 - Color based on voltage?
 - Background options? have to be in immersive mode
 - Check power flow direction
