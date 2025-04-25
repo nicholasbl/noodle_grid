@@ -283,6 +283,7 @@ impl HazardCheck {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn recompute_lines<F>(
     src: &[LineState],
     getter: F,

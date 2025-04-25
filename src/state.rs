@@ -16,7 +16,6 @@ use crate::{
     ruler::{
         make_ruler,
         RulerType::{LineLoad, Voltage},
-        VerticalAxisSelector,
     },
     summary::SummaryItem,
     texture::{make_chevron_texture, make_hsv_texture},
@@ -175,8 +174,6 @@ impl GridState {
 
         let summary_item = SummaryItem::new(&system, &domain, &mut state_lock);
 
-        //let v_axis_selector = VerticalAxisSelector::new(&mut state_lock);
-
         let ret = Arc::new(Mutex::new(GridState {
             state: state.clone(),
             system: Arc::new(system),
@@ -202,7 +199,6 @@ impl GridState {
             active_timer: None,
             send_back: None,
             probe_move_request_signal: probe_signal_tx,
-            //axis_selector: v_axis_selector,
         }));
 
         {

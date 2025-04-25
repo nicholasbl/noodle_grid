@@ -270,7 +270,7 @@ pub async fn probe_service(
     gs: GridStatePtr,
     mut check: tokio::sync::mpsc::UnboundedReceiver<bool>,
 ) {
-    while let Some(_) = check.recv().await {
+    while check.recv().await.is_some() {
         log::debug!("Getting move update");
 
         log::debug!("Proceeding...");
@@ -322,10 +322,8 @@ fn on_click(
         return;
     };
 
-    gs.probes.retain_mut(|f| match f.check_click(&ctx) {
-        Some(ClickResult::Delete) => false,
-        _ => true,
-    });
+    gs.probes
+        .retain_mut(|f| !matches!(f.check_click(&ctx), Some(ClickResult::Delete)));
 }
 
 make_method_function!(activate,

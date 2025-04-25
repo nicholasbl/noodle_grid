@@ -10,9 +10,8 @@ pub fn make_basemap(
     system: &PowerSystem,
     domain: &Domain,
 ) -> Option<EntityReference> {
-    let Some(fp) = system.floor_plan.as_ref() else {
-        return None;
-    };
+    let fp = system.floor_plan.as_ref()?;
+
     let ll = vec2(domain.lerp_x(fp.ll_x as f32), domain.lerp_y(fp.ll_y as f32));
     let ur = vec2(domain.lerp_x(fp.ur_x as f32), domain.lerp_y(fp.ur_y as f32));
 

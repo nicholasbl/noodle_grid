@@ -9,6 +9,7 @@ mod import_obj;
 mod instance;
 mod instanced_item;
 mod methods;
+#[allow(clippy::all)]
 mod power_system_capnp;
 mod probe;
 mod ruler;

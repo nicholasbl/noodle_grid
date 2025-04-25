@@ -27,7 +27,7 @@ const SUMMARY_WIDTH: f32 = CHART_SIZE * ASPECT_W_H;
 
 impl SummaryItem {
     pub fn new(ps: &PowerSystem, domain: &Domain, state: &mut ServerState) -> Self {
-        let chart = crate::chart::generate_time_chart(&ps, PX_WIDTH, PX_HEIGHT);
+        let chart = crate::chart::generate_time_chart(ps, PX_WIDTH, PX_HEIGHT);
 
         //std::fs::write("temp.png", &chart).unwrap();
 

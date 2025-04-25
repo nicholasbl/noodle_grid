@@ -60,59 +60,6 @@ pub fn make_ruler(state: &mut ServerState, domain: &Domain, ty: RulerType) -> En
     })
 }
 
-#[allow(dead_code)]
-pub struct VerticalAxisSelector {
-    indicator: EntityReference,
-    voltage: EntityReference,
-    line_load: EntityReference,
-}
-
-impl VerticalAxisSelector {
-    pub fn new(state: &mut ServerState) -> Self {
-        let indicator_source = include_str!("../assets/selection_indicator.obj");
-
-        let indicator = make_obj(
-            state,
-            "Indicator",
-            [0.5, 0.5, 0.5, 1.0],
-            glm::vec3(0.5, 0.5, 0.5),
-            glm::vec3(0.5, 0.0, 0.0),
-            None,
-            indicator_source,
-        );
-
-        let voltage_source = include_str!("../assets/selection_indicator.obj");
-
-        let voltage = make_obj(
-            state,
-            "Indicator",
-            [0.5, 0.5, 0.5, 1.0],
-            glm::vec3(0.5, 0.5, 0.5),
-            glm::vec3(0.5, 0.0, 0.0),
-            None,
-            voltage_source,
-        );
-
-        let line_load_source = include_str!("../assets/selection_indicator.obj");
-
-        let line_load = make_obj(
-            state,
-            "Indicator",
-            [0.5, 0.5, 0.5, 1.0],
-            glm::vec3(0.5, 0.5, 0.5),
-            glm::vec3(0.5, 0.0, 0.0),
-            None,
-            line_load_source,
-        );
-
-        Self {
-            indicator,
-            voltage,
-            line_load,
-        }
-    }
-}
-
 pub fn make_obj(
     state: &mut ServerState,
     name: &str,

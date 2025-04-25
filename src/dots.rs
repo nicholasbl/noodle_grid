@@ -57,7 +57,7 @@ where
         let sum: T = [self.sa, self.sb, self.sc, self.ea, self.eb, self.ec]
             .into_iter()
             .sum();
-        return sum / 6.0.into();
+        sum / 6.0.into()
     }
 }
 
